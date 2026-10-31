@@ -636,6 +636,11 @@ def main():
             window.raise_()
             window._message('Stop the class recording and wait for processing before quitting Clicky.')
             return
+        if window is not None and window.notes.document().isModified():
+            window._save_notes()
+            if window.notes.document().isModified():
+                _show_classroom()
+                return
         tray.hide_icon()
         manager.shutdown()
         app.quit()

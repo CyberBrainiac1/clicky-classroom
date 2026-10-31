@@ -3,38 +3,42 @@ from datetime import datetime
 import json
 from pathlib import Path
 import sys
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, QTimer, QSize
+from PyQt6.QtGui import QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLabel, QPushButton, QFrame, QListWidget, QStackedWidget,
     QPlainTextEdit, QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView, QScrollArea)
+    QAbstractItemView, QScrollArea, QListWidgetItem)
 
 from classroom.settings import data_root
 from classroom.session import Session
+from ui.dashboard_icons import icon
 
 STYLE = '''
-QWidget#dashboard { background:#121216; color:#f0f0f5; }
-QWidget { font-family:"Segoe UI"; font-size:13px; color:#f0f0f5; }
-QFrame#sidebar { background:#17171d; border-right:1px solid #30303b; }
+QWidget#dashboard { background:#191b1c; color:#eeeeef; }
+QWidget { font-family:"Segoe UI"; font-size:13px; color:#eeeeef; }
+QFrame#sidebar { background:#111314; border-right:1px solid #2d3032; }
+QFrame#noteRail { background:#191b1c; border-right:1px solid #2d3032; }
+QFrame#topbar { background:#191b1c; border-bottom:1px solid #2d3032; }
 QLabel#brand { font-size:20px; font-weight:600; }
-QLabel#pageTitle { font-size:24px; font-weight:600; }
+QLabel#pageTitle { font-size:26px; font-weight:600; }
 QLabel#sectionTitle { font-size:15px; font-weight:600; }
-QLabel#secondary { color:#a0a0b3; }
+QLabel#secondary { color:#93969b; }
 QLabel#value { font-size:20px; font-weight:600; }
 QLabel#notice { background:#30271b; color:#f1ce95; padding:12px; border-radius:4px; }
-QFrame#surface { background:#1c1c22; border:1px solid #30303b; border-radius:6px; }
-QPushButton { background:#24242e; border:1px solid #3c3c4b; border-radius:4px; padding:8px 16px; min-height:20px; }
-QPushButton:hover { background:#30303c; border-color:#67677d; }
+QFrame#surface { background:#202224; border:1px solid #303336; border-radius:8px; }
+QPushButton { background:#252729; border:1px solid #383b3f; border-radius:8px; padding:7px 12px; min-height:20px; }
+QPushButton:hover { background:#303336; border-color:#575d64; }
 QPushButton:focus { border:1px solid #65a5ff; }
-QPushButton:disabled { color:#81818e; border-color:#30303b; background:#1c1c22; }
+QPushButton:disabled { color:#64696f; border-color:#303336; background:#202224; }
 QPushButton#primary { background:#0078ff; color:white; border-color:#0078ff; }
 QPushButton#primary:hover { background:#218aff; }
 QListWidget { background:transparent; border:0; outline:0; }
-QListWidget::item { height:40px; padding-left:12px; color:#b8b8c8; border-radius:4px; }
-QListWidget::item:selected { background:#192b43; color:#f0f0f5; border-left:3px solid #0078ff; }
-QListWidget::item:hover:!selected { background:#23232c; }
-QPlainTextEdit, QLineEdit, QTableWidget, QComboBox, QSpinBox { background:#1c1c22; color:#f0f0f5; border:1px solid #3c3c4b; border-radius:4px; padding:8px; }
+QListWidget::item { height:40px; padding-left:12px; color:#c8c9ce; border-radius:6px; }
+QListWidget::item:selected { background:#1c2a3b; color:#f0f0f5; }
+QListWidget::item:hover:!selected { background:#232629; }
+QListWidget#noteList::item { height:40px; padding-left:8px; }
+QPlainTextEdit, QTextBrowser, QLineEdit, QTableWidget, QComboBox, QSpinBox { background:#202224; color:#eeeeef; border:1px solid #383b3f; border-radius:6px; padding:8px; }
 QPlainTextEdit:focus, QLineEdit:focus { border-color:#65a5ff; }
 QTableWidget { gridline-color:#30303b; selection-background-color:#192b43; }
 QHeaderView::section { background:#24242e; color:#a0a0b3; border:0; padding:10px; text-align:left; }
@@ -46,6 +50,20 @@ QGroupBox::title { subcontrol-origin:margin; left:16px; color:#a0a0b3; }
 QTabWidget::pane { border:1px solid #30303b; }
 QTabBar::tab { background:#24242e; padding:10px 16px; }
 QTabBar::tab:selected { background:#192b43; }
+QLineEdit#search { background:#252729; border:1px solid #3a3c3f; border-radius:18px; padding:8px 14px; }
+QLineEdit#noteTitle { background:transparent; border:0; border-radius:0; font-size:32px; font-weight:600; padding:0; }
+QLabel#pill { background:#252729; border-radius:14px; color:#aeb1b5; padding:6px 12px; }
+QLabel#eyebrow { color:#8c9198; font-size:11px; font-weight:600; }
+QPushButton#quiet { background:transparent; border:0; text-align:left; color:#bfc2c7; }
+QPushButton#quiet:hover { background:#252729; }
+QPushButton#record { background:#1e3049; border:1px solid #38577a; border-radius:18px; color:#d8e7ff; }
+QTabWidget#noteTabs::pane { border:0; background:#191b1c; }
+QTabWidget#noteTabs QTabBar::tab { background:#252729; color:#969ba1; padding:8px 14px; border-radius:14px; margin-right:4px; }
+QTabWidget#noteTabs QTabBar::tab:selected { background:#30353b; color:#f3f4f5; }
+QTextBrowser#transcriptReader, QPlainTextEdit#noteEditor { background:#191b1c; border:0; padding:16px 0; font-size:15px; selection-background-color:#24548a; }
+QMenu { background:#222527; border:1px solid #3a3e42; padding:6px; }
+QMenu::item { padding:8px 20px; }
+QMenu::item:selected { background:#1c2a3b; }
 '''
 
 
@@ -72,6 +90,7 @@ def page(title, subtitle):
 
 class DashboardWindow(QWidget):
     PAGES = ['Overview','Assistant','Classroom','Class library','Tools','Settings']
+    NAV_LABELS = ['Home','Chat','Notes','Library','Tools','Settings']
 
     def __init__(self, actions=None, snapshot=None, classroom_factory=None, preview=False):
         super().__init__()
@@ -88,7 +107,7 @@ class DashboardWindow(QWidget):
         self._recording = False
         self.setObjectName('dashboard')
         self.setWindowTitle('Clicky — Dashboard')
-        self.resize(1180,820)
+        self.resize(1440,900)
         self.setMinimumSize(1000,700)
         self.setStyleSheet(STYLE)
         root = QHBoxLayout(self)
@@ -96,14 +115,19 @@ class DashboardWindow(QWidget):
         root.setSpacing(0)
         sidebar = QFrame()
         sidebar.setObjectName('sidebar')
-        sidebar.setFixedWidth(192)
+        sidebar.setFixedWidth(184)
         side = QVBoxLayout(sidebar)
-        side.setContentsMargins(16,24,16,24)
+        side.setContentsMargins(12,24,12,16)
         side.setSpacing(24)
-        side.addWidget(label('Clicky','brand'))
+        brand = label('Clicky','brand')
+        brand.setContentsMargins(12,0,0,8)
+        side.addWidget(brand)
         self.navigation = QListWidget()
         self.navigation.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.navigation.addItems(self.PAGES)
+        for title, symbol in zip(self.NAV_LABELS, ['house','message-square','notebook-pen','library','blocks','settings-2']):
+            self.navigation.addItem(QListWidgetItem(icon(symbol), title))
+        self.navigation.setIconSize(QSize(19,19))
+        self.navigation.setSpacing(4)
         self.navigation.setAccessibleName('Dashboard navigation')
         side.addWidget(self.navigation,1)
         self.mode = label('Preview — controls are not connected' if preview else 'Your desktop companion')
@@ -111,11 +135,68 @@ class DashboardWindow(QWidget):
         self.menu_button = self.action_button('All Clicky controls','all_controls')
         side.addWidget(self.menu_button)
         root.addWidget(sidebar)
+        content = QVBoxLayout()
+        content.setContentsMargins(0,0,0,0)
+        content.setSpacing(0)
+        topbar = QFrame()
+        topbar.setObjectName('topbar')
+        topbar.setFixedHeight(64)
+        top = QHBoxLayout(topbar)
+        top.setContentsMargins(24,12,24,12)
+        self.section_name = label('Home','sectionTitle')
+        top.addWidget(self.section_name)
+        top.addStretch()
+        self.note_search = QLineEdit()
+        self.note_search.setObjectName('search')
+        self.note_search.setPlaceholderText('Search notes and transcripts…')
+        self.note_search.setAccessibleName('Search saved notes and transcripts')
+        self.note_search.addAction(icon('search'),QLineEdit.ActionPosition.LeadingPosition)
+        self.note_search.setMinimumWidth(220)
+        self.note_search.setMaximumWidth(420)
+        self.note_search.textChanged.connect(self.filter_notes)
+        top.addWidget(self.note_search,1)
+        self.new_note_button = QPushButton('New note')
+        self.new_note_button.setIcon(icon('plus','#d5d8dc'))
+        self.new_note_button.clicked.connect(self.new_note)
+        top.addWidget(self.new_note_button)
+        content.addWidget(topbar)
+        workspace = QHBoxLayout()
+        workspace.setSpacing(0)
+        self.note_rail = QFrame()
+        self.note_rail.setObjectName('noteRail')
+        self.note_rail.setFixedWidth(224)
+        rail = QVBoxLayout(self.note_rail)
+        rail.setContentsMargins(12,24,12,16)
+        rail.setSpacing(16)
+        rail.addWidget(label('PRIVATE NOTES','eyebrow'))
+        self.all_notes_button = QPushButton('All class notes')
+        self.all_notes_button.setObjectName('quiet')
+        self.all_notes_button.setIcon(icon('folder'))
+        self.all_notes_button.clicked.connect(lambda:self.note_search.clear())
+        rail.addWidget(self.all_notes_button)
+        self.note_list = QListWidget()
+        self.note_list.setObjectName('noteList')
+        self.note_list.setIconSize(QSize(17,17))
+        self.note_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.note_list.itemClicked.connect(self.open_note_item)
+        rail.addWidget(self.note_list,1)
+        self.note_list_empty = label('Your saved classes will appear here.')
+        rail.addWidget(self.note_list_empty)
+        self.import_note_button = QPushButton('Import audio')
+        self.import_note_button.setIcon(icon('upload'))
+        self.import_note_button.clicked.connect(self.import_note)
+        rail.addWidget(self.import_note_button)
+        rail.addWidget(label('Saved on this laptop','secondary'))
+        workspace.addWidget(self.note_rail)
         self.stack = QStackedWidget()
-        root.addWidget(self.stack,1)
+        workspace.addWidget(self.stack,1)
+        content.addLayout(workspace,1)
+        root.addLayout(content,1)
         self._build_overview()
         self._build_assistant()
-        self.classroom_slot, slot_layout = page('Classroom','Record teacher audio and turn the class into local notes.')
+        self.classroom_slot = QWidget()
+        slot_layout = QVBoxLayout(self.classroom_slot)
+        slot_layout.setContentsMargins(0,0,0,0)
         self.classroom_slot_layout = slot_layout
         self.stack.addWidget(self.classroom_slot)
         self._build_library()
@@ -123,6 +204,8 @@ class DashboardWindow(QWidget):
         self._build_settings()
         self.navigation.currentRowChanged.connect(self._navigate)
         self.navigation.setCurrentRow(0)
+        self.search_shortcut = QShortcut(QKeySequence('Ctrl+K'),self)
+        self.search_shortcut.activated.connect(self.focus_note_search)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh_status)
         self.timer.start(1000)
@@ -305,22 +388,66 @@ class DashboardWindow(QWidget):
     def _navigate(self, row):
         if row < 0:
             return
+        notes_page = self.PAGES[row] in {'Classroom','Class library'}
+        self.note_rail.setVisible(notes_page)
+        self.note_search.setVisible(notes_page)
+        self.section_name.setText(self.NAV_LABELS[row])
         if self.PAGES[row] == 'Classroom' and self.classroom is None:
             from classroom.ui import ClassroomWindow
             self.classroom = self.classroom_factory() if self.classroom_factory else ClassroomWindow()
             self.classroom.intro.hide()
             self.classroom.setWindowFlags(Qt.WindowType.Widget)
-            scroll = QScrollArea()
-            scroll.setWidgetResizable(True)
-            scroll.setWidget(self.classroom)
-            self.classroom_slot_layout.addWidget(scroll,1)
+            self.classroom_slot_layout.addWidget(self.classroom,1)
             self.classroom.messages.status.connect(self.record_activity)
+            self.classroom.session_changed.connect(self.refresh_library)
         if self.PAGES[row] == 'Class library':
             self.refresh_library()
         self.stack.setCurrentIndex(row)
 
+    def focus_note_search(self):
+        self.select_page('Classroom')
+        self.note_search.setFocus()
+
+    def new_note(self):
+        self.select_page('Classroom')
+        if self.classroom.new_draft():
+            self.note_list.clearSelection()
+            self.classroom.title.setFocus()
+            self.classroom.title.selectAll()
+
+    def import_note(self):
+        self.select_page('Classroom')
+        if self.classroom.busy:
+            self.classroom._message('Finish the active class before importing another.')
+            return
+        self.classroom._import()
+
+    def filter_notes(self, query=''):
+        query = query.casefold().strip()
+        self.note_list.clear()
+        for index, (session, values) in enumerate(self.library_rows):
+            if query and query not in self.note_index.get(str(session.path),''):
+                continue
+            item = QListWidgetItem(icon('file-text'),values[0])
+            item.setToolTip(values[0]+'\n'+values[1]+' · '+values[2])
+            item.setData(Qt.ItemDataRole.UserRole,index)
+            self.note_list.addItem(item)
+            if self.classroom and self.classroom.session and self.classroom.session.path == session.path:
+                item.setSelected(True)
+        self.note_list_empty.setVisible(not self.note_list.count())
+        self.note_list_empty.setText('No matching notes.' if query else 'Your saved classes will appear here.')
+
+    def open_note_item(self, item):
+        index = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(index,int) or not 0 <= index < len(self.library_rows):
+            return
+        self.select_page('Classroom')
+        self.classroom._set_session(self.library_rows[index][0])
+        self.filter_notes(self.note_search.text())
+
     def refresh_library(self):
         rows = []
+        self.note_index = {}
         root = data_root()/'sessions'
         errors = 0
         if root.exists():
@@ -333,6 +460,13 @@ class DashboardWindow(QWidget):
                         session.metadata.get('created','')[:16].replace('T',' '), session.metadata.get('status','unknown'),
                         'Saved' if (path/'transcript.md').exists() else 'Pending',
                         'Saved' if (path/'notes.md').exists() else 'Pending']))
+                    searchable = [session.metadata.get('title','')]
+                    for filename in ['transcript.md','notes.md']:
+                        document = path/filename
+                        if document.exists():
+                            with document.open('r',encoding='utf-8') as stream:
+                                searchable.append(stream.read(2_000_000))
+                    self.note_index[str(path)] = '\n'.join(searchable).casefold()
                 except (OSError, ValueError, KeyError):
                     errors += 1
         self.library_rows = rows
@@ -343,6 +477,7 @@ class DashboardWindow(QWidget):
         self.library_empty.setVisible(not rows)
         self.open_class_button.setEnabled(bool(rows))
         self.values['saved'].setText(str(len(rows)))
+        self.filter_notes(self.note_search.text())
         if errors:
             self.record_activity(f'{errors} saved class folder(s) could not be read. Check the folder before retrying.',error=True)
 
@@ -351,9 +486,6 @@ class DashboardWindow(QWidget):
         if not 0 <= row < len(self.library_rows):
             return
         self.select_page('Classroom')
-        if self.classroom.busy:
-            self.record_activity('Finish the active class before opening another.', error=True)
-            return
         self.classroom._set_session(self.library_rows[row][0])
 
     def send_question(self):
@@ -406,9 +538,23 @@ class DashboardWindow(QWidget):
             else:
                 state = 'Not recording'
             self.values['classroom'].setText(state)
+            if self.classroom and self.classroom.session:
+                paths = {session.path for session,_ in self.library_rows}
+                if self.classroom.session.path not in paths:
+                    self.refresh_library()
         except Exception as exc:
             self.freshness.setText('State unavailable · '+datetime.now().strftime('%H:%M:%S'))
             self.record_activity('Could not refresh app state: '+str(exc),error=True)
+
+    def closeEvent(self, event):
+        if self.classroom and self.classroom.notes.document().isModified():
+            self.classroom._save_notes()
+            if self.classroom.notes.document().isModified():
+                event.ignore()
+                return
+        if self.classroom:
+            self.classroom.options_dialog.hide()
+        event.accept()
 
 
 def preview(render=None):

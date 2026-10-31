@@ -2,7 +2,9 @@
 
 A native window for recording a teacher, transcribing the class locally, and writing study notes with a local language model. Classroom is separate from Clicky's existing screen/Q&A Lesson Recording.
 
-The full app also adds a native **Dashboard** with Overview, Assistant, Classroom, Class library, Tools and Settings. It uses Clicky's dark gray/blue palette, Segoe UI and consistent8pixel spacing. Existing assistant, cursor guidance, shortcuts, Sketch, Work/routines, connections, journal and recording controls remain available. Run `run-dashboard.cmd` after preparing full dependencies, or choose **Open Dashboard** from the fork's tray. The launcher can read the installed Clicky's legacy .env without copying keys into the repository. Existing protected settings keep precedence.
+The full app also adds a native **Dashboard** with Home, Chat, Notes, Library, Tools and Settings. The Notes workspace follows the user-selected OpenWhispr layout: saved notes on the left, searchable transcripts, a large title, transcript/notes tabs and compact recording controls. It uses dark neutral colors, Clicky's blue accent, Segoe UI and consistent spacing. Existing assistant, cursor guidance, shortcuts, Sketch, Work/routines, connections, journal and recording controls remain available. Run `run-dashboard.cmd` after preparing full dependencies, or choose **Open Dashboard** from the fork's tray. The launcher can read the installed Clicky's legacy .env without copying keys into the repository. Existing protected settings keep precedence.
+
+Use **Recording settings** for audio devices and local models. **More** contains import/open, generation, recovery and model preparation. **Your notes** is an editable text/Markdown notebook with Save notes; unsaved edits block switching and are saved before a normal close/quit. Editing is unavailable while processing. **New note** can also create a text-only note without opening audio. Search covers titles, transcripts and saved notes; Ctrl+K focuses it. Classroom's older internal route names remain compatible with the app.
 
 ## What it does
 

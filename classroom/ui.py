@@ -1,12 +1,17 @@
 """Native Qt Classroom window. Opening it never opens an audio device."""
 import os
 import sys
+import html
+import time
+import sqlite3
+from datetime import datetime
 from PyQt6.QtCore import QThread, QTimer, pyqtSignal, QObject
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLabel, QLineEdit, QComboBox, QCheckBox, QSpinBox, QPushButton, QGroupBox,
-    QTabWidget, QPlainTextEdit, QFileDialog, QMessageBox)
-from .settings import Settings, data_root
-from .session import Session
+    QTabWidget, QPlainTextEdit, QTextBrowser, QFileDialog, QMessageBox, QDialog,
+    QScrollArea, QFrame, QMenu)
+from .settings import Settings, data_root, atomic_text
+from .session import Session, stamp
 from .recorder import ClassroomRecorder, import_audio, retry_session
 from .notes import LocalNotes
 from .engines import prepare_whisper_download
@@ -33,6 +38,8 @@ class Job(QThread):
 
 
 class ClassroomWindow(QWidget):
+    session_changed = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         from ui.typography import ensure_native_font
@@ -46,16 +53,48 @@ class ClassroomWindow(QWidget):
         self.jobs = set()
         self.messages = Messages(self)
         self.messages.status.connect(self._message)
+        from ui.dashboard_icons import icon
+        self._transcript_cache = None
+        self._recording_began = None
+        self._loaded_notes = None
         layout = QVBoxLayout(self)
-        self.intro = QWidget()
-        intro_layout = QVBoxLayout(self.intro)
-        intro_layout.setContentsMargins(0,0,0,0)
-        intro_layout.addWidget(QLabel('Record a class, keep a timestamped transcript, and make study notes on this laptop.'))
-        intro_layout.addWidget(QLabel('Recording starts only when you click Start. Follow your class recording rules.'))
+        layout.setContentsMargins(0,0,0,0)
+        layout.setSpacing(0)
+        # Kept for the standalone entry point; the dashboard supplies its own chrome.
+        self.intro = QLabel('Clicky / Notes')
+        self.intro.setObjectName('secondary')
+        self.intro.setContentsMargins(32,16,32,0)
         layout.addWidget(self.intro)
+        body = QWidget()
+        content = QVBoxLayout(body)
+        content.setContentsMargins(40,32,40,24)
+        content.setSpacing(20)
+        self.title = QLineEdit('Untitled note')
+        self.title.setObjectName('noteTitle')
+        self.title.setAccessibleName('Note title')
+        content.addWidget(self.title)
+        metadata = QHBoxLayout()
+        metadata.setSpacing(8)
+        self.date_label = QLabel(datetime.now().strftime('%b %d'))
+        self.date_label.setObjectName('pill')
+        self.storage_label = QLabel('Private · saved on this laptop')
+        self.storage_label.setObjectName('pill')
+        metadata.addWidget(self.date_label)
+        metadata.addWidget(self.storage_label)
+        metadata.addStretch()
+        content.addLayout(metadata)
+        # Options are a separate, scrollable native dialog, never a capture trigger.
+        self.options_dialog = QDialog(self)
+        self.options_dialog.setWindowTitle('Recording & local models')
+        self.options_dialog.resize(760,720)
+        self.options_dialog.setStyleSheet(STYLE)
+        options_root = QVBoxLayout(self.options_dialog)
+        options_scroll = QScrollArea()
+        options_scroll.setWidgetResizable(True)
+        options_widget = QWidget()
+        options = QVBoxLayout(options_widget)
+        options.setSpacing(16)
         form = QFormLayout()
-        self.title = QLineEdit('Class notes')
-        form.addRow('Class / topic', self.title)
         self.source = QComboBox()
         for label, value in [('Teacher in the room — microphone', 'microphone'),
                              ('Online class — computer audio', 'system'), ('Microphone + computer audio', 'both')]:
@@ -71,10 +110,7 @@ class ClassroomWindow(QWidget):
         form.addRow('Microphone', microphone_row)
         self.basics = QWidget()
         self.basics.setLayout(form)
-        layout.addWidget(self.basics)
-        self.settings_toggle = QPushButton('Local models & advanced settings')
-        self.settings_toggle.setCheckable(True)
-        layout.addWidget(self.settings_toggle)
+        options.addWidget(self.basics)
         form = QFormLayout()
         self.engine = QComboBox()
         self.engine.addItem('Local Whisper (CPU)', 'whisper')
@@ -112,44 +148,90 @@ class ClassroomWindow(QWidget):
         group = QGroupBox('Class recording settings')
         self.settings_group = group
         group.setLayout(form)
-        layout.addWidget(group)
-        group.hide()
-        self.settings_toggle.toggled.connect(group.setVisible)
-        buttons = QHBoxLayout()
-        self.start_button = QPushButton('Start class recording')
-        self.start_button.setObjectName('primary')
+        options.addWidget(group)
+        options_scroll.setWidget(options_widget)
+        options_root.addWidget(options_scroll)
+        close_options = QPushButton('Done')
+        close_options.clicked.connect(self.options_dialog.hide)
+        options_root.addWidget(close_options)
+        self.settings_toggle = QPushButton('Recording settings')
+        self.settings_toggle.setObjectName('quiet')
+        self.settings_toggle.setIcon(icon('sliders-horizontal'))
+        self.settings_toggle.clicked.connect(self.options_dialog.show)
+        self.start_button = QPushButton('Start recording')
+        self.start_button.setObjectName('record')
+        self.start_button.setIcon(icon('mic','#75aaff'))
         self.start_button.clicked.connect(self._start)
-        self.stop_button = QPushButton('Stop and process')
+        self.stop_button = QPushButton('Stop & process')
+        self.stop_button.setIcon(icon('square','#75aaff'))
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self._stop)
-        self.import_button = QPushButton('Import saved audio…')
+        self.import_button = QPushButton('Import audio…',self)
         self.import_button.clicked.connect(self._import)
-        self.open_button = QPushButton('Open saved class…')
+        self.open_button = QPushButton('Open saved class…',self)
         self.open_button.clicked.connect(self._open)
-        for button in [self.start_button, self.stop_button, self.import_button, self.open_button]:
-            buttons.addWidget(button)
-        layout.addLayout(buttons)
-        tools = QHBoxLayout()
-        self.retry_button = QPushButton('Retry transcription')
+        self.retry_button = QPushButton('Retry transcription',self)
         self.retry_button.clicked.connect(self._retry)
-        self.notes_button = QPushButton('Generate study notes')
+        self.notes_button = QPushButton('Generate study notes',self)
         self.notes_button.clicked.connect(self._notes)
-        self.prepare_button = QPushButton('Prepare offline speech model…')
+        self.prepare_button = QPushButton('Prepare offline speech model…',self)
         self.prepare_button.clicked.connect(self._prepare)
-        self.folder_button = QPushButton('Open class folder')
+        self.folder_button = QPushButton('Open note folder',self)
         self.folder_button.clicked.connect(self._folder)
-        for button in [self.retry_button, self.notes_button, self.prepare_button, self.folder_button]:
-            tools.addWidget(button)
-        layout.addLayout(tools)
-        self.status = QLabel('Ready. No audio device is open.')
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
+        self.more_button = QPushButton('More')
+        self.more_button.setIcon(icon('ellipsis'))
+        self.more_menu = QMenu(self)
+        self.menu_actions = []
+        for button in [self.import_button,self.open_button,self.notes_button,self.retry_button,
+                       self.prepare_button,self.folder_button]:
+            button.hide()
+            action = self.more_menu.addAction(button.text())
+            action.triggered.connect(button.click)
+            self.menu_actions.append((action,button))
+        self.more_button.setMenu(self.more_menu)
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
+        controls.addWidget(self.settings_toggle)
+        controls.addStretch()
+        controls.addWidget(self.start_button)
+        controls.addWidget(self.stop_button)
+        controls.addWidget(self.more_button)
+        content.addLayout(controls)
+        self.session_info = QLabel('Ready when you are · no audio device is open')
+        self.session_info.setObjectName('secondary')
+        self.session_info.setWordWrap(True)
+        content.addWidget(self.session_info)
         self.tabs = QTabWidget()
-        self.transcript, self.notes, self.log = QPlainTextEdit(), QPlainTextEdit(), QPlainTextEdit()
-        for name, edit in [('Transcript', self.transcript), ('Study notes', self.notes), ('Activity', self.log)]:
-            edit.setReadOnly(True)
-            self.tabs.addTab(edit, name)
-        layout.addWidget(self.tabs, 1)
+        self.tabs.setObjectName('noteTabs')
+        self.transcript = QTextBrowser()
+        self.transcript.setObjectName('transcriptReader')
+        self.transcript.setOpenExternalLinks(False)
+        self.transcript.setOpenLinks(False)
+        self.notes = QPlainTextEdit()
+        self.notes.setObjectName('noteEditor')
+        self.notes.setPlaceholderText('Write your own notes here, or choose More → Generate study notes after transcription.')
+        self.log = QPlainTextEdit()
+        self.log.setReadOnly(True)
+        self.log.document().setMaximumBlockCount(500)
+        self.log.setObjectName('noteEditor')
+        self.log.setPlaceholderText('Recording and processing updates appear here.')
+        for name, edit in [('Transcript',self.transcript),('Your notes',self.notes),('Activity',self.log)]:
+            self.tabs.addTab(edit,name)
+        content.addWidget(self.tabs,1)
+        footer = QHBoxLayout()
+        self.status = QLabel('No recording started.')
+        self.status.setObjectName('secondary')
+        self.status.setWordWrap(True)
+        footer.addWidget(self.status,1)
+        self.save_notes_button = QPushButton('Save notes')
+        self.save_notes_button.clicked.connect(self._save_notes)
+        self.save_notes_button.setEnabled(False)
+        self.save_notes_button.hide()
+        self.tabs.currentChanged.connect(lambda index:self.save_notes_button.setVisible(index==1))
+        self.notes.textChanged.connect(lambda:self.save_notes_button.setEnabled(self.notes.document().isModified() and not self.busy))
+        footer.addWidget(self.save_notes_button)
+        content.addLayout(footer)
+        layout.addWidget(body,1)
         try:
             self._load(Settings.load())
         except Exception as exc:
@@ -201,6 +283,7 @@ class ClassroomWindow(QWidget):
         self.jobs.discard(job)
         job.deleteLater()
         self._refresh()
+        self.session_changed.emit()
 
     def _choose_parakeet(self):
         path = QFileDialog.getExistingDirectory(self, 'Select local Parakeet model folder')
@@ -221,12 +304,15 @@ class ClassroomWindow(QWidget):
             self._message('Could not list microphones: '+str(exc))
 
     def _start(self):
+        if not self._can_leave():
+            return
         try:
             settings = self.current_settings()
             settings.save()
             self.recorder = ClassroomRecorder(settings, self.messages.status.emit)
             self.recorder.start(self.title.text().strip())
-            self.session = self.recorder.session
+            self._set_session(self.recorder.session, starting=True)
+            self._recording_began = time.monotonic()
             self._refresh()
         except Exception as exc:
             self._message('Could not start: '+str(exc))
@@ -237,15 +323,18 @@ class ClassroomWindow(QWidget):
             self._job(lambda: self.recorder.stop(), lambda path: self._message('Audio saved. Transcription/notes may still be processing.'))
 
     def _open(self):
+        if not self._can_leave():
+            return
         path = QFileDialog.getExistingDirectory(self, 'Open a saved class folder', str(data_root()/'sessions'))
         if path:
             try:
-                self.session = Session(path)
-                self._refresh()
+                self._set_session(Session(path))
             except Exception as exc:
                 self._message('Could not open class: '+str(exc))
 
     def _import(self):
+        if not self._can_leave():
+            return
         path, _ = QFileDialog.getOpenFileName(self, 'Import class audio', '', 'Audio (*.wav *.flac *.ogg *.aiff);;All files (*)')
         if not path:
             return
@@ -260,16 +349,84 @@ class ClassroomWindow(QWidget):
             return import_audio(path, title, settings)
         self._message('Importing the selected audio file…')
         def imported(session):
-            self._set_session(session)
+            # The completed import is still registered until QThread.finished.
+            # Its result belongs to this job, rather than a user switching notes.
+            self._set_session(session, starting=True)
             self._retry()
         self._job(work, imported)
 
-    def _set_session(self, session):
+    def _can_leave(self):
+        if self.busy:
+            self._message('Finish the active recording or processing before opening another note.')
+            return False
+        if self.notes.document().isModified():
+            self._message('Save your edited notes before opening another note.')
+            return False
+        return True
+
+    def new_draft(self):
+        if not self._can_leave():
+            return False
+        self.session = self.recorder = None
+        self.title.setReadOnly(False)
+        self.title.setText('Untitled note')
+        self.date_label.setText(datetime.now().strftime('%b %d'))
+        self.notes.clear()
+        self.notes.document().setModified(False)
+        self.log.clear()
+        self._transcript_cache = self._loaded_notes = None
+        self._recording_began = None
+        self._message('New note. Choose Start recording or write your own notes.')
+        self._refresh()
+        self.session_changed.emit()
+        return True
+
+    def _set_session(self, session, starting=False):
+        if not starting and self.session and self.session.path == session.path:
+            return True
+        if not starting and not self._can_leave():
+            return False
         self.session = session
+        self._transcript_cache = self._loaded_notes = None
+        self.title.setText(session.metadata.get('title','Untitled note'))
+        self.title.setReadOnly(True)
+        created = session.metadata.get('created','')
+        try:
+            self.date_label.setText(datetime.fromisoformat(created).strftime('%b %d'))
+        except ValueError:
+            self.date_label.setText('Saved note')
+        self.notes.clear()
+        self.notes.document().setModified(False)
+        self.tabs.setCurrentIndex(0)
         self._message('Class ready: '+str(session.path))
         self._refresh()
+        self.session_changed.emit()
+        return True
+
+    def _save_notes(self):
+        if self.busy:
+            self._message('Wait for processing to finish before saving edited notes.')
+            return
+        try:
+            if self.session is None:
+                session = Session.create(self.title.text().strip(),self.current_settings())
+                session.set_status('notes-only')
+                self.session = session
+                self.title.setReadOnly(True)
+            text = self.notes.toPlainText()
+            atomic_text(self.session.path/'notes.md',text)
+            self._loaded_notes = text
+            self.notes.document().setModified(False)
+            self._message('Your notes are saved on this laptop.')
+            self._refresh()
+            self.session_changed.emit()
+        except Exception as exc:
+            self._message('Could not save notes: '+str(exc))
 
     def _retry(self):
+        if self.notes.document().isModified():
+            self._message('Save edited notes before retrying transcription.')
+            return
         if self.session:
             try:
                 settings = self.current_settings()
@@ -280,6 +437,9 @@ class ClassroomWindow(QWidget):
             self._job(lambda: retry_session(session, self.messages.status.emit, settings=settings), lambda _: self._message('Class reprocessed.'))
 
     def _notes(self):
+        if self.notes.document().isModified():
+            self._message('Save edited notes before generating study notes.')
+            return
         if self.session:
             try:
                 settings = self.current_settings()
@@ -322,25 +482,75 @@ class ClassroomWindow(QWidget):
             for worker in self.recorder.capture_threads+[self.recorder.writer_thread]))
         self.settings_group.setEnabled(not recording)
         self.basics.setEnabled(not recording)
-        self.start_button.setEnabled(not self.busy)
+        dirty = self.notes.document().isModified()
+        self.start_button.setEnabled(not self.busy and not dirty)
         self.stop_button.setEnabled((recording or closing_audio) and not self.jobs)
+        self.stop_button.setVisible(recording or closing_audio)
+        self.start_button.setVisible(not recording and not closing_audio)
         for button in [self.import_button, self.open_button, self.prepare_button]:
             button.setEnabled(not self.busy)
-        self.retry_button.setEnabled(self.session is not None and not self.busy)
-        self.notes_button.setEnabled(self.session is not None and not self.busy)
+        self.retry_button.setEnabled(self.session is not None and not self.busy and not dirty)
+        self.notes_button.setEnabled(self.session is not None and not self.busy and not dirty)
         self.folder_button.setEnabled(self.session is not None)
+        self.notes.setReadOnly(self.busy)
+        self.save_notes_button.setEnabled(dirty and not self.busy)
+        for action,button in self.menu_actions:
+            action.setEnabled(button.isEnabled())
+        if recording:
+            elapsed = time.monotonic()-(self._recording_began or time.monotonic())
+            mode = 'Live transcription' if self.recorder.settings.live_transcription else 'Transcription after stopping'
+            self.session_info.setText('Recording · '+stamp(elapsed)+' · '+mode)
+        elif self.busy:
+            self.session_info.setText('Processing · your saved audio stays on this laptop')
+        elif self.session:
+            self.session_info.setText('Saved note · '+self.session.metadata.get('status','saved').replace('-',' '))
+        else:
+            self.session_info.setText('Ready when you are · no audio device is open')
         if self.session:
-            for name, widget in [('transcript.md', self.transcript), ('notes.md', self.notes)]:
-                path = self.session.path/name
-                if path.exists():
-                    try:
-                        text = path.read_text('utf-8')
-                        if widget.toPlainText() != text:
-                            widget.setPlainText(text)
-                    except OSError:
-                        pass
+            try:
+                rows = self.session.rows()
+                signature = [(r['id'],r['status'],r['text'],r['error']) for r in rows]
+                if signature != self._transcript_cache:
+                    scroll = self.transcript.verticalScrollBar()
+                    position, follow_end = scroll.value(), scroll.value() >= scroll.maximum()-16
+                    self.transcript.setHtml(self._transcript_html(rows))
+                    scroll.setValue(scroll.maximum() if follow_end else position)
+                    self._transcript_cache = signature
+                path = self.session.path/'notes.md'
+                if path.exists() and not dirty:
+                    text = path.read_text('utf-8')
+                    if text != self._loaded_notes:
+                        self.notes.setPlainText(text)
+                        self.notes.document().setModified(False)
+                        self._loaded_notes = text
+            except (OSError,ValueError,sqlite3.Error) as exc:
+                self._message('Could not refresh saved note: '+str(exc))
+        elif self._transcript_cache != 'empty':
+            self.transcript.setHtml(self._transcript_html([]))
+            self._transcript_cache = 'empty'
+
+    @staticmethod
+    def _transcript_html(rows):
+        rendered = []
+        for row in rows:
+            if row['status'] == 'silence':
+                continue
+            text = row['text'] if row['status'] == 'done' else ('Transcription pending' if row['status'] == 'pending' else 'Transcription failed: '+row['error'])
+            if not text:
+                continue
+            source = {'microphone':'Microphone','system':'Computer audio','import':'Imported audio'}.get(row['source'],'Audio')
+            rendered.append('<p style="color:#90979f;font-size:11px;margin-top:20px;margin-bottom:8px">'+
+                stamp(row['start_seconds'])+' &nbsp; '+source+'</p><table width="100%" cellspacing="0" cellpadding="14" bgcolor="#24272a"><tr><td>'+html.escape(text).replace('\n','<br>')+'</td></tr></table>')
+        if not rendered:
+            return '<div style="color:#90979f;margin-top:90px"><p style="font-size:22px;color:#d6d9de">Your transcript starts here</p><p>Record a class or import audio to keep the conversation in one place.</p><p>You can also write a note in the Your notes tab.</p></div>'
+        return '<html><body style="font-family:Segoe UI;font-size:15px;color:#e3e5e8">'+''.join(rendered)+'</body></html>'
 
     def closeEvent(self, event):
+        if self.notes.document().isModified():
+            self._save_notes()
+            if self.notes.document().isModified():
+                event.ignore()
+                return
         if self.busy:
             self.showMinimized()
             self._message('Classroom is still active. Use Stop and wait for processing before exiting.')
@@ -349,6 +559,8 @@ class ClassroomWindow(QWidget):
             event.accept()
 
     def shutdown(self):
+        if self.notes.document().isModified() and not self.busy:
+            self._save_notes()
         if self.recorder:
             self.recorder.stop()
             self.recorder.wait_processing(timeout=2)

@@ -1,5 +1,25 @@
 # Long-audio transcription validation
 
+## Packaged executable verification
+
+The full Windows `Clicky.exe` also processed the entire 2,142-word / 741.36-second fixture through the same 25-chunk pipeline: 2,137 output words, 0.84% word error rate, all chunks completed, one CPU inference thread at BelowNormal priority. The packaged check rendered all six dashboard pages and loaded the bundled SVG icons, Sketch and speech dependencies. It used isolated test data and the explicit prerecorded fixture; no live devices or normal assistant services started. This validates the packaged speech runtime as well as source execution. It does not validate live audio hardware or real study-note model quality.
+
+## Same-size alternatives checked October 31
+
+Tested two additional compatible INT8 transducers on the same 2,142-word / 741.36-second synthetic English lecture, same 25-chunk file pipeline, CPU only, one inference thread, BelowNormal priority. No live devices or private recordings were used.
+
+| Model | Required model files | Word error rate | Processing time | Completed |
+|---|---:|---:|---:|---:|
+| Parakeet TDT 0.6B V3 | 670,478,772 bytes | **0.84%** | 135 s, prior baseline run | 25/25 |
+| Parakeet Unified EN 0.6B | 663,043,117 bytes | 1.07% | 111 s | 25/25 |
+| Orukeet v0.1.0 INT8 | 671,476,984 bytes | 1.96% | 100 s | 25/25 |
+
+Keep Parakeet V3 as the default: neither alternative improved accuracy on this fixture. These are single runs on a working laptop. Times are not a controlled speed ranking, and the baseline was measured earlier. This clean synthetic lecture cannot establish a winner for distant microphones, noisy rooms or overlapping speakers.
+
+Published results helped select candidates, rather than deciding the winner for this laptop. [NVIDIA's Unified card](https://huggingface.co/nvidia/parakeet-unified-en-0.6b) reports 5.91% offline English WER in its evaluation, compared with 6.04% for TDT V2 in the same table; it is not a direct V3 comparison. [Orukeet's card](https://huggingface.co/oruk/orukeet) reports broad improvements over V3, including English FLEURS. Its LibriSpeech test-other results are not held out: that split was used for final adaptation/checkpoint selection. Its published native-model scores also do not guarantee the same results from quantized ONNX on this particular audio.
+
+Unified was downloaded from the [official sherpa-onnx transducer distribution](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-transducer/nemo-transducer-models.html). Orukeet's pinned archive and every packaged file matched its official SHA256 manifest at revision `55a984d46f68323301837194ce647c702f55facc`. Models were downloaded only into Clicky's own research cache, never into OpenWhispr. Weights are not included in this source repository or the portable app.
+
 ## Parakeet comparison and new default
 
 The fork now defaults to **Parakeet TDT0.6Bv3INT8** for Classroom. The regular assistant/dictation path supports Parakeet too and prefers an available Clicky-owned cache unless another provider is explicitly selected.

@@ -73,6 +73,10 @@ hidden = [
 datas, binaries, hiddenimports = [], [], []
 datas.append(("browser_extension", "browser_extension"))
 datas.append(("RELEASE-NOTES-1.6.md", "."))
+datas.append(("assets/dashboard-icons", "assets/dashboard-icons"))
+datas.append(("THIRD_PARTY_LICENSES", "licenses"))
+datas.append(("LICENSE", "."))
+datas.append(("THIRD_PARTY_NOTICES.md", "."))
 for pkg in (
     "faster_whisper",
     "ctranslate2",

@@ -1,6 +1,6 @@
 # Clicky for Windows 🔵
 
-**Classroom + Dashboard fork:** preserves Clicky's regular assistant and adds a native dashboard, local class-audio transcription, recoverable recordings, and local study notes. Start with [CLASSROOM.md](CLASSROOM.md), see the [dashboard design](DASHBOARD-SPEC.md), and read the [2,142-word transcription benchmark](BENCHMARK.md). This branch is source-ready; the live microphone/loopback and real notes-model tests still need to be completed before installing over a working Clicky setup.
+**Classroom + Dashboard fork:** preserves Clicky's regular assistant and adds an OpenWhispr-style native Notes workspace, local class-audio transcription, recoverable recordings, and local study notes. Start with [CLASSROOM.md](CLASSROOM.md), see the [dashboard design](DASHBOARD-SPEC.md), and read the [2,142-word transcription benchmark](BENCHMARK.md). The full portable executable passed its dashboard/runtime check and the full prerecorded-audio test. Live microphone/loopback hardware and actual notes-model quality remain unverified; the preview need not replace a working installation.
 
 **1.6 preview:** original Clicky Sketch and Drive, typed chat/history, offline Windows voice, local jobs/routines, Browser Link, reviewed MCP tools, dictation and narrated recordings. Read [what changed and what still needs live testing](RELEASE-NOTES-1.6.md). Configure these from the panel's **Settings**, **Sketch**, and **Work & routines** controls.
 

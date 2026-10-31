@@ -8,6 +8,18 @@ One laptop owner needs to see what Clicky is doing, continue the regular assista
 
 ## Structure
 
+### User-selected notes layout (October 31)
+
+The supplied OpenWhispr screenshot supersedes the earlier control-panel presentation. Use a slim dark application sidebar, a second private-notes rail, a top search/new-note bar, and an open transcript/editor workspace. Display labels are Home, Chat, Notes, Library, Tools and Settings; the internal routes remain compatible with the existing Clicky callbacks.
+
+Notes is the main study workspace. Its title/date sit above compact recording controls and Transcript / Your notes / Activity tabs. Saved classes can be searched by title, transcript or notes, and opened from the rail. New note supports recording or a plain text note. Model/device controls live in a separate scrollable native dialog. Recovery, generation, import and folder actions stay in More. Real elapsed time appears only while recording. Source labels identify microphone/system/import; do not invent speaker identity or copy the screenshot's private content.
+
+Edits are retained when switching notes is blocked, saved explicitly, and saved on dashboard close. Transcription refresh does not replace an edited note. Editing is unavailable during processing to avoid racing note generation. No nonfunctional sharing, speaker-label, team-space or subscription controls are included. Existing Clicky controls remain in Tools, Settings and the full tray menu.
+
+Use #111314 for application navigation, #191b1c for the reading surface, #24272a for transcript blocks, restrained blue selection, Segoe UI and locally bundled Lucide outline icons. Use 8px-based spacing. At 1000px width both sidebars fit and transcript text wraps inside the reading pane; wider windows give the transcript more room.
+
+The original overview below remains available under Home; it no longer defines the Notes page's layout.
+
 - Stable left navigation: Overview, Assistant, Classroom, Class library, Tools, Settings.
 - Overview: current assistant state, classroom state, model selection (labeled configuration, not verified service health), active errors, and direct next actions. No invented uptime, scores, token counts, trends or charts.
 - Assistant: typed questions and actual streamed replies plus a button to show the existing floating companion.

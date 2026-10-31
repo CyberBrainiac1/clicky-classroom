@@ -9,6 +9,7 @@ for package in ('PyQt6', 'faster_whisper', 'ctranslate2', 'tokenizers', 'sherpa_
     binaries += b
     hidden += h
 datas += [('THIRD_PARTY_LICENSES/OpenWhispr-MIT.txt', 'licenses'), ('THIRD_PARTY_NOTICES.md', 'licenses')]
+datas += [('assets/dashboard-icons','assets/dashboard-icons'),('THIRD_PARTY_LICENSES/Lucide-ISC.txt','licenses')]
 a = Analysis(['classroom_app.py'], pathex=['.'], binaries=binaries, datas=datas,
              hiddenimports=hidden, excludes=['tkinter'])
 pyz = PYZ(a.pure)
