@@ -254,7 +254,7 @@ def test_speech_adapters_are_cpu_only_offline_and_do_not_use_openwhispr_server(m
         def __init__(self,*args,**kwargs):calls.append(kwargs)
         def transcribe(self,*args,**kwargs):return iter([SimpleNamespace(text='Local speech')]),None
     monkeypatch.setitem(sys.modules,'faster_whisper',SimpleNamespace(WhisperModel=Whisper))
-    assert LocalTranscriber(Settings(threads=1)).transcribe(pcm(1)) == 'Local speech'
+    assert LocalTranscriber(Settings(engine='whisper',threads=1)).transcribe(pcm(1)) == 'Local speech'
     assert calls[0]['local_files_only'] is True
     assert calls[0]['device'] == 'cpu' and calls[0]['cpu_threads'] == 1
     for name in ['encoder.int8.onnx','decoder.int8.onnx','joiner.int8.onnx','tokens.txt']:

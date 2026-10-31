@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import json
 import os
 from pathlib import Path
@@ -28,9 +28,9 @@ def atomic_text(path: Path, text: str) -> None:
 class Settings:
     source: str = 'microphone'
     microphone_device: int | None = None
-    engine: str = 'whisper'
+    engine: str = 'parakeet'
     whisper_model: str = 'base'
-    parakeet_directory: str = ''
+    parakeet_directory: str = field(default_factory=lambda: str(Path(os.getenv('CLICKY_PARAKEET_MODEL')) if os.getenv('CLICKY_PARAKEET_MODEL') else data_root()/'models'/'parakeet-tdt-0.6b-v3'))
     language: str = 'en'
     threads: int = 2
     chunk_seconds: int = 30

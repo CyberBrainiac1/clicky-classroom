@@ -8,9 +8,10 @@ from .notes import LocalNotes
 
 def main():
     parser = argparse.ArgumentParser(description='Clicky Classroom offline file processing')
-    parser.add_argument('--engine', choices=['whisper','parakeet'], default='whisper')
+    parser.add_argument('--engine', choices=['whisper','parakeet'], default='parakeet')
     parser.add_argument('--whisper-model', default='base')
-    parser.add_argument('--parakeet-directory', default='')
+    from .models import default_parakeet_directory
+    parser.add_argument('--parakeet-directory', default=default_parakeet_directory())
     parser.add_argument('--language', default='en')
     parser.add_argument('--notes-backend', choices=['ollama','openai-local'], default='ollama')
     parser.add_argument('--notes-url', default='http://127.0.0.1:11434')

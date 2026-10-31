@@ -16,7 +16,8 @@ class LocalTranscriber:
                                       cpu_threads=self.settings.threads, num_workers=1, local_files_only=True)
         else:
             import sherpa_onnx
-            directory = Path(self.settings.parakeet_directory)
+            from .models import default_parakeet_directory
+            directory = Path(self.settings.parakeet_directory or default_parakeet_directory())
             # Adapted from OpenWhispr parakeetModelInfo.js's transducer manifest.
             names = ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt']
             missing = [name for name in names if not (directory/name).is_file()]

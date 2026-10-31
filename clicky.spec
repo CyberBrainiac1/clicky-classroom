@@ -22,6 +22,7 @@ from PyInstaller.utils.hooks import collect_all
 hidden = [
     "classroom.ui", "classroom.settings", "classroom.session", "classroom.recorder",
     "classroom.engines", "classroom.notes", "classroom.capture", "classroom.openwhispr_audio",
+    "classroom.models", "audio.stt.parakeet_stt",
     # Lazy LLM providers
     "ai.claude_provider",
     "ai.openai_provider",

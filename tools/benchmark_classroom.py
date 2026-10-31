@@ -17,13 +17,21 @@ os.environ.setdefault('MKL_NUM_THREADS','1')
 
 
 def main():
+    if os.name == 'nt':
+        import ctypes
+        kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+        kernel.GetCurrentProcess.restype=ctypes.c_void_p
+        kernel.SetPriorityClass.argtypes=[ctypes.c_void_p,ctypes.c_uint]
+        if not kernel.SetPriorityClass(kernel.GetCurrentProcess(),0x4000):
+            raise ctypes.WinError(ctypes.get_last_error())
+    from classroom.models import default_parakeet_directory
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--audio',required=True)
     parser.add_argument('--reference',required=True)
     parser.add_argument('--output',required=True)
     parser.add_argument('--model',default='base')
-    parser.add_argument('--engine',choices=['whisper','parakeet'],default='whisper')
-    parser.add_argument('--parakeet-directory',default='')
+    parser.add_argument('--engine',choices=['whisper','parakeet'],default='parakeet')
+    parser.add_argument('--parakeet-directory',default=default_parakeet_directory())
     args=parser.parse_args()
     out=Path(args.output).resolve()
     out.mkdir(parents=True,exist_ok=True)
@@ -46,7 +54,8 @@ def main():
             'audioSeconds':duration,'processingSeconds':elapsed,
             'wordErrorRate':jiwer.wer(normalize(reference),normalize(hypothesis)),
             'allChunksProcessed':not session.has_errors(),'chunks':len(session.rows()),
-            'engine':args.engine,'model':args.model,'threads':1,'liveDevicesUsed':False}
+            'engine':args.engine,'model':Path(args.parakeet_directory).name if args.engine=='parakeet' else args.model,
+            'threads':1,'liveDevicesUsed':False,'priority':'BelowNormal' if os.name=='nt' else 'normal'}
     (out/'hypothesis.txt').write_text(hypothesis,encoding='utf-8')
     (out/'result.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     print(json.dumps(result,indent=2))

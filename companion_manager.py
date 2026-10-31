@@ -655,7 +655,10 @@ class CompanionManager(QObject):
     def _get_stt(self):
         if self._stt is None:
             provider = cfg.stt_provider()
-            if provider == "deepgram":
+            if provider == 'parakeet':
+                from audio.stt.parakeet_stt import ParakeetSTT
+                self._stt = ParakeetSTT()
+            elif provider == "deepgram":
                 from audio.stt.deepgram_stt import DeepgramSTT
                 self._stt = DeepgramSTT()
             elif provider == "openai":

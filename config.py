@@ -333,8 +333,14 @@ class Config:
     def stt_provider(self) -> str:
         # Allow explicit override via env (so users can force whisper_cpp etc.)
         forced = os.getenv("CLICKY_STT", "").strip().lower()
-        if forced in ("deepgram", "openai", "whisper_cpp", "faster_whisper"):
+        if forced in ("deepgram", "openai", "whisper_cpp", "faster_whisper", "parakeet"):
             return forced
+        # Prefer the prepared Clicky-owned Parakeet cache without starting a model
+        # or contacting another app. Explicit provider selections remain honored.
+        from classroom.models import model_ready
+        from importlib.util import find_spec
+        if model_ready() and find_spec('sherpa_onnx') is not None:
+            return 'parakeet'
         local_model = self.llm_provider() in {"ollama", "lmstudio"}
         if self.deepgram_api_key and not local_model:
             return "deepgram"

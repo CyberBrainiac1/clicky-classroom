@@ -10,6 +10,7 @@ from .session import Session
 from .recorder import ClassroomRecorder, import_audio, retry_session
 from .notes import LocalNotes
 from .engines import prepare_whisper_download
+from .models import prepare_parakeet_download
 
 
 class Messages(QObject):
@@ -90,7 +91,7 @@ class ClassroomWindow(QWidget):
         row.addWidget(choose)
         form.addRow('Parakeet model folder', row)
         self.language = QLineEdit('en')
-        form.addRow('Speech language (blank = auto)', self.language)
+        form.addRow('Whisper language (blank = auto)', self.language)
         self.threads = QSpinBox()
         self.threads.setRange(1, 4)
         self.threads.setValue(2)
@@ -133,7 +134,7 @@ class ClassroomWindow(QWidget):
         self.retry_button.clicked.connect(self._retry)
         self.notes_button = QPushButton('Generate study notes')
         self.notes_button.clicked.connect(self._notes)
-        self.prepare_button = QPushButton('Prepare offline Whisper…')
+        self.prepare_button = QPushButton('Prepare offline speech model…')
         self.prepare_button.clicked.connect(self._prepare)
         self.folder_button = QPushButton('Open class folder')
         self.folder_button.clicked.connect(self._folder)
@@ -291,10 +292,16 @@ class ClassroomWindow(QWidget):
 
     def _prepare(self):
         model = self.whisper.text().strip()
+        parakeet = self.engine.currentData() == 'parakeet'
         choice = QMessageBox.question(self, 'Download local speech model?',
+            'Prepare Parakeet TDT0.6Bv3 in Clicky’s own cache? If missing, about680MB will be downloaded. No recording will start.' if parakeet else
             f'Download/cache the Whisper model “{model}” for offline transcription? No recording will start.')
         if choice == QMessageBox.StandardButton.Yes:
-            self._job(lambda: prepare_whisper_download(model), lambda path: self._message('Offline speech model ready: '+str(path)))
+            def ready(path):
+                if parakeet:
+                    self.parakeet.setText(str(path))
+                self._message('Offline speech model ready: '+str(path))
+            self._job(prepare_parakeet_download if parakeet else lambda: prepare_whisper_download(model), ready)
 
     def _folder(self):
         if self.session and os.name == 'nt':

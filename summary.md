@@ -1,5 +1,7 @@
 # Clicky dashboard and class notes — development summary
 
+Latest update: **Parakeet TDT0.6Bv3INT8 is now the Classroom default**, with a regular Clicky talk/dictation adapter too. It uses Clicky's own model cache, separate from the running OpenWhispr service. The same2,142-word/12m21s prerecorded lecture was fully transcribed in135seconds on one CPU thread, with0.84%word error rate. All25chunks completed. The updated automated suite passed98tests. Whisper remains available and its original benchmark is retained below. No installed app or current recording was restarted or changed.
+
 The original Clicky assistant is still here. Its cursor guidance, talk shortcut, typed chat, speech, drawing, document context, reviewed computer actions, Work/routines, connections, journal and existing screen lesson recorder were preserved. The dashboard and Classroom are additions.
 
 The native dashboard collects those controls into Overview, Assistant, Classroom, Class library, Tools and Settings. It uses Clicky's existing dark gray colors, blue accent, Segoe UI, and consistent8pixel spacing. Advanced recording/model controls are collapsed so the transcript and notes stay visible. The user-requested design-dashboards skill informed the design; DASHBOARD-SPEC.md explains the decisions.
