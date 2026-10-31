@@ -1,0 +1,9 @@
+# Standalone Clicky Classroom, Python3.11/3.12. No cloud AI SDK required.
+PyQt6>=6.6,<7
+numpy>=1.26,<3
+httpx>=0.27,<1
+sounddevice>=0.4.6,<1
+soundfile>=0.12,<1
+faster-whisper>=1.0,<2
+sherpa-onnx>=1.12,<2
+PyAudioWPatch>=0.2.12.6,<0.3; sys_platform == 'win32'

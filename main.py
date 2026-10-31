@@ -38,6 +38,15 @@ def _ensure_std_streams() -> None:
 
 _ensure_std_streams()
 
+if __name__ == '__main__' and '--dashboard-preview' in sys.argv:
+    from ui.dashboard import preview
+    sys.exit(preview())
+
+# Classroom opens without assistant microphones, global hooks or screen capture.
+if __name__ == "__main__" and "--classroom" in sys.argv:
+    from classroom.ui import run
+    sys.exit(run())
+
 # Run before normal startup imports, credentials, microphone and global hooks.
 if __name__ == "__main__" and "--smoke-test" in sys.argv:
     from packaging_smoke import run
@@ -362,6 +371,27 @@ def main():
     tray.on_toggle_journal.connect(manager.set_journal)
     tray.on_toggle_ocr.connect(manager.set_ocr_enabled)
 
+    # Independent class audio/transcript/notes window; opening it is not recording.
+    classroom_window = [None]
+    dashboard_window = [None]
+    def _get_classroom():
+        if classroom_window[0] is None:
+            from classroom.ui import ClassroomWindow
+            classroom_window[0] = ClassroomWindow()
+            app.aboutToQuit.connect(classroom_window[0].shutdown)
+        return classroom_window[0]
+    def _show_classroom():
+        if dashboard_window[0] is not None:
+            dashboard_window[0].show()
+            dashboard_window[0].select_page('Classroom')
+            dashboard_window[0].raise_()
+        else:
+            window = _get_classroom()
+            window.show()
+            window.raise_()
+            window.activateWindow()
+    tray.on_show_classroom.connect(_show_classroom)
+
     # Lesson recording
     def _record_start():
         out = manager.start_recording()
@@ -599,7 +629,47 @@ def main():
             tray.show_notification("Diagnostics failed", str(e))
     tray.on_diagnostics.connect(_save_diagnostics)
 
-    tray.on_quit.connect(lambda: (tray.hide_icon(), manager.shutdown(), app.quit()))
+    def _quit_safely():
+        window = classroom_window[0]
+        if window is not None and window.busy:
+            window.show()
+            window.raise_()
+            window._message('Stop the class recording and wait for processing before quitting Clicky.')
+            return
+        tray.hide_icon()
+        manager.shutdown()
+        app.quit()
+    tray.on_quit.connect(_quit_safely)
+
+    def _show_dashboard():
+        if dashboard_window[0] is None:
+            from ui.dashboard import DashboardWindow
+            from drawing import example_scene
+            actions = {
+                'assistant': panel.show, 'submit_text': manager.submit_text, 'stop': manager.stop,
+                'sketch': lambda: _show_scene(example_scene()), 'work': work_window.show,
+                'connections': connections_window.show, 'api_keys': _open_api_keys,
+                'journal': tray.on_journal_open.emit, 'attach': tray.on_attach_doc.emit,
+                'lesson_start': _record_start, 'lesson_stop': _record_stop,
+                'workflow_start': _wf_start, 'workflow_stop': _wf_stop,
+                'setup': tray.on_run_setup.emit, 'diagnostics': tray.on_diagnostics.emit,
+                'all_controls': tray.show_menu,
+            }
+            for tab_name in ('General','Voice','Microphone','Shortcuts','History','Getting started','Updates'):
+                actions['settings:'+tab_name] = lambda name=tab_name: settings_window.open_tab(name)
+            dashboard_window[0] = DashboardWindow(actions=actions,
+                snapshot=lambda: {'state': manager._state, 'models': cfg.describe()},
+                classroom_factory=_get_classroom)
+            manager.sig_state_changed.connect(dashboard_window[0].set_assistant_state)
+            manager.sig_response_chunk.connect(dashboard_window[0].append_response)
+            manager.sig_error.connect(lambda text: dashboard_window[0].record_activity(text,error=True))
+            manager.sig_recording_state.connect(dashboard_window[0].set_recording_state)
+        dashboard_window[0].show()
+        dashboard_window[0].raise_()
+        dashboard_window[0].activateWindow()
+    tray.on_show_dashboard.connect(_show_dashboard)
+    if '--dashboard' in sys.argv:
+        _show_dashboard()
 
     # ── Global hotkey ─────────────────────────────────────────────────────────
     _shortcuts = []

@@ -7,8 +7,8 @@ from urllib.parse import urlparse
 import httpx
 from storage import data_dir
 
-VERSION='1.6.0-preview'
-REPOSITORY='Bitshank-2338/clicky-windows'
+VERSION='1.6.0-classroom-preview'
+REPOSITORY='CyberBrainiac1/clicky-classroom'
 
 
 def version_key(value):
@@ -20,6 +20,8 @@ def version_key(value):
 async def latest():
     async with httpx.AsyncClient(timeout=20) as client:
         response=await client.get(f'https://api.github.com/repos/{REPOSITORY}/releases/latest',headers={'Accept':'application/vnd.github+json'})
+        if response.status_code == 404:
+            return None  # this fork has not published its first installer yet
         response.raise_for_status()
         release=response.json()
     if version_key(release['tag_name'])<=version_key(VERSION):return None

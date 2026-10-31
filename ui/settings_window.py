@@ -23,6 +23,7 @@ class SettingsWindow(QWidget):
         self.resize(620, 600)
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
+        self.tabs = tabs
         layout.addWidget(tabs)
         behavior = QWidget()
         form = QFormLayout(behavior)
@@ -168,6 +169,15 @@ class SettingsWindow(QWidget):
         self.update_ready.connect(self.show_update)
         self.installer_ready.connect(self.install_update)
         self.refresh_history()
+
+    def open_tab(self, name):
+        for index in range(self.tabs.count()):
+            if self.tabs.tabText(index) == name:
+                self.tabs.setCurrentIndex(index)
+                break
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def check_updates(self):
         async def check():

@@ -20,6 +20,8 @@ from PyInstaller.utils.hooks import collect_all
 # ── Modules that are lazy-imported by CompanionManager — PyInstaller's
 #    static analysis misses them, so we list them explicitly.
 hidden = [
+    "classroom.ui", "classroom.settings", "classroom.session", "classroom.recorder",
+    "classroom.engines", "classroom.notes", "classroom.capture", "classroom.openwhispr_audio",
     # Lazy LLM providers
     "ai.claude_provider",
     "ai.openai_provider",
@@ -40,6 +42,8 @@ hidden = [
     "ui.setup_wizard",
     "ui.api_keys_dialog",
     "ui.settings_window",
+    "ui.dashboard",
+    "ui.typography",
     "ui.connections_window",
     "ui.jobs_window",
     "ui.drawing_board",
@@ -95,6 +99,8 @@ for pkg in (
     "langdetect",
     "pynput",
     "pywhispercpp",
+    "sherpa_onnx",
+    "pyaudiowpatch",
 ):
     try:
         d, b, h = collect_all(pkg)

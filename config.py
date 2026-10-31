@@ -15,6 +15,12 @@ if getattr(sys, "frozen", False):
 else:
     _HERE = Path(__file__).parent
 
+# Optional launcher-provided legacy config is read, never copied into the checkout.
+# Checkout-local and protected per-user settings still take precedence below.
+_legacy = os.getenv('CLICKY_LEGACY_CONFIG')
+if _legacy and Path(_legacy).is_file():
+    load_dotenv(_legacy, override=False)
+
 # Load env files in priority order. .env.local overrides .env (Next.js convention,
 # which is how many users — including this one — keep their real keys).
 for _name in (".env", ".env.local"):

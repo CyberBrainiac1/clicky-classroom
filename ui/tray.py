@@ -28,6 +28,8 @@ class TrayManager(QObject):
 
     on_show_panel         = pyqtSignal()
     on_hide_panel         = pyqtSignal()
+    on_show_classroom     = pyqtSignal()
+    on_show_dashboard     = pyqtSignal()
     on_quit               = pyqtSignal()
     on_toggle_search      = pyqtSignal(bool)
     on_toggle_wake_word   = pyqtSignal(bool)
@@ -122,8 +124,14 @@ class TrayManager(QObject):
         show_action = menu.addAction("Show Panel")
         show_action.triggered.connect(self.on_show_panel)
 
+        dashboard_action = menu.addAction('Open Dashboard')
+        dashboard_action.triggered.connect(self.on_show_dashboard)
+
         hide_action = menu.addAction("Hide Panel")
         hide_action.triggered.connect(self.on_hide_panel)
+
+        classroom_action = menu.addAction("Classroom — Record class & make local notes…")
+        classroom_action.triggered.connect(self.on_show_classroom)
 
         stop_action = menu.addAction("Stop (Esc)")
         stop_action.triggered.connect(self.on_stop)
@@ -300,6 +308,10 @@ class TrayManager(QObject):
             self._tray.hide()
         except Exception:
             pass
+
+    def show_menu(self):
+        from PyQt6.QtGui import QCursor
+        self._tray.contextMenu().popup(QCursor.pos())
 
     def _prompt_custom_instructions(self):
         dlg = QDialog(None)

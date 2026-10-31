@@ -200,7 +200,10 @@ def test_live_transcription_streams_pcm_and_partial_results(monkeypatch):
     assert partials[0]=='partial' and partials[-1]=='Hello world'
 
 
-def test_main_wires_all_windows_without_network_or_hooks(qt_app,monkeypatch):
+@pytest.mark.parametrize('with_dashboard',[False,True])
+def test_main_wires_all_windows_without_network_or_hooks(qt_app,monkeypatch,with_dashboard):
+    import sys
+    monkeypatch.setattr(sys,'argv',['main.py']+(['--dashboard'] if with_dashboard else []))
     import main
     import keyboard
     import desktop
@@ -226,6 +229,8 @@ def test_main_wires_all_windows_without_network_or_hooks(qt_app,monkeypatch):
         assert exit_result.value.code==0
         titles={window.windowTitle() for window in qt_app.topLevelWidgets()}
         assert 'Clicky Settings' in titles and 'Clicky Connections' in titles
+        if with_dashboard:
+            assert 'Clicky — Dashboard' in titles
     finally:
         for instance in created:instance.shutdown();instance._thread.join(timeout=5)
         for widget in qt_app.topLevelWidgets():widget.close()
