@@ -170,6 +170,8 @@ class ClassroomWindow(QWidget):
         self.import_button.clicked.connect(self._import)
         self.open_button = QPushButton('Open saved class…',self)
         self.open_button.clicked.connect(self._open)
+        self.openwhispr_button = QPushButton('Import OpenWhispr notes…',self)
+        self.openwhispr_button.clicked.connect(self._import_openwhispr)
         self.retry_button = QPushButton('Retry transcription',self)
         self.retry_button.clicked.connect(self._retry)
         self.notes_button = QPushButton('Generate study notes',self)
@@ -182,7 +184,7 @@ class ClassroomWindow(QWidget):
         self.more_button.setIcon(icon('ellipsis'))
         self.more_menu = QMenu(self)
         self.menu_actions = []
-        for button in [self.import_button,self.open_button,self.notes_button,self.retry_button,
+        for button in [self.import_button,self.open_button,self.openwhispr_button,self.notes_button,self.retry_button,
                        self.prepare_button,self.folder_button]:
             button.hide()
             action = self.more_menu.addAction(button.text())
@@ -239,6 +241,7 @@ class ClassroomWindow(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._refresh)
         self.timer.start(1000)
+        self.source.currentIndexChanged.connect(self._refresh)
         self._refresh()
 
     def _load(self, value):
@@ -354,6 +357,29 @@ class ClassroomWindow(QWidget):
             self._set_session(session, starting=True)
             self._retry()
         self._job(work, imported)
+
+    def _import_openwhispr(self):
+        if not self._can_leave():
+            return
+        from .openwhispr_import import default_database, import_openwhispr_notes
+        database=default_database()
+        if not database.is_file():
+            path,_=QFileDialog.getOpenFileName(self,'Select OpenWhispr notes database','','SQLite database (*.db)')
+            if not path:
+                return
+            database=path
+        self._message('Copying local OpenWhispr notes. Originals will stay in OpenWhispr.')
+        def imported(result):
+            self.session_changed.emit()
+            if result['imported']:
+                self._set_session(Session(result['imported'][0]),starting=True)
+            message=f"Imported {len(result['imported'])} notes; {result['alreadyImported']} already present; {result['excluded']} deleted/unavailable notes excluded."
+            if result['changedSourceKept']:
+                message+=f" {result['changedSourceKept']} source notes changed; existing Clicky copies were kept."
+            if result['errors']:
+                message+=f" {len(result['errors'])} could not be imported: "+result['errors'][0]['error']
+            self._message(message)
+        self._job(lambda:import_openwhispr_notes(database),imported)
 
     def _can_leave(self):
         if self.busy:
@@ -487,9 +513,11 @@ class ClassroomWindow(QWidget):
         self.stop_button.setEnabled((recording or closing_audio) and not self.jobs)
         self.stop_button.setVisible(recording or closing_audio)
         self.start_button.setVisible(not recording and not closing_audio)
-        for button in [self.import_button, self.open_button, self.prepare_button]:
+        for button in [self.import_button, self.open_button, self.openwhispr_button, self.prepare_button]:
             button.setEnabled(not self.busy)
-        self.retry_button.setEnabled(self.session is not None and not self.busy and not dirty)
+        has_audio=bool(self.session and any(self.session.path.glob('audio-*.wav')))
+        self.retry_button.setEnabled(has_audio and not self.busy and not dirty)
+        self.retry_button.setToolTip('Requires saved audio. Imported OpenWhispr notes keep their existing transcript without copying audio.')
         self.notes_button.setEnabled(self.session is not None and not self.busy and not dirty)
         self.folder_button.setEnabled(self.session is not None)
         self.notes.setReadOnly(self.busy)
@@ -503,12 +531,16 @@ class ClassroomWindow(QWidget):
         elif self.busy:
             self.session_info.setText('Processing · your saved audio stays on this laptop')
         elif self.session:
-            self.session_info.setText('Saved note · '+self.session.metadata.get('status','saved').replace('-',' '))
+            self.session_info.setText('Imported from OpenWhispr · audio not copied' if self.session.metadata.get('origin',{}).get('app')=='OpenWhispr' else 'Saved note · '+self.session.metadata.get('status','saved').replace('-',' '))
         else:
-            self.session_info.setText('Ready when you are · no audio device is open')
+            source_name={'microphone':'Microphone','system':'Computer audio','both':'Microphone + computer audio'}.get(self.source.currentData(),'Audio')
+            self.session_info.setText('Ready · '+source_name+' · no audio device is open')
         if self.session:
             try:
                 rows = self.session.rows()
+                untimed=set(self.session.metadata.get('untimed_chunk_ids',[]))
+                for row in rows:
+                    row['timestamp_unknown']=row['id'] in untimed
                 signature = [(r['id'],r['status'],r['text'],r['error']) for r in rows]
                 if signature != self._transcript_cache:
                     scroll = self.transcript.verticalScrollBar()
@@ -540,7 +572,7 @@ class ClassroomWindow(QWidget):
                 continue
             source = {'microphone':'Microphone','system':'Computer audio','import':'Imported audio'}.get(row['source'],'Audio')
             rendered.append('<p style="color:#90979f;font-size:11px;margin-top:20px;margin-bottom:8px">'+
-                stamp(row['start_seconds'])+' &nbsp; '+source+'</p><table width="100%" cellspacing="0" cellpadding="14" bgcolor="#24272a"><tr><td>'+html.escape(text).replace('\n','<br>')+'</td></tr></table>')
+                ('Time not supplied' if row.get('timestamp_unknown') else stamp(row['start_seconds']))+' &nbsp; '+source+'</p><table width="100%" cellspacing="0" cellpadding="14" bgcolor="#24272a"><tr><td>'+html.escape(text).replace('\n','<br>')+'</td></tr></table>')
         if not rendered:
             return '<div style="color:#90979f;margin-top:90px"><p style="font-size:22px;color:#d6d9de">Your transcript starts here</p><p>Record a class or import audio to keep the conversation in one place.</p><p>You can also write a note in the Your notes tab.</p></div>'
         return '<html><body style="font-family:Segoe UI;font-size:15px;color:#e3e5e8">'+''.join(rendered)+'</body></html>'

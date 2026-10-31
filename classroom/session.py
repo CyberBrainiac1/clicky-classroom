@@ -25,10 +25,12 @@ class Session:
         self.metadata = json.loads((self.path/'session.json').read_text('utf-8'))
 
     @classmethod
-    def create(cls, title, settings):
+    def create(cls, title, settings, *, directory=None):
         settings.validate()
         slug = re.sub(r'[^\w -]', '', title).strip()[:60] or 'Class'
-        path = data_root()/'sessions'/(datetime.now().strftime('%Y%m%d-%H%M%S')+'-'+slug+'-'+uuid.uuid4().hex[:6])
+        path = Path(directory) if directory is not None else data_root()/'sessions'/(datetime.now().strftime('%Y%m%d-%H%M%S')+'-'+slug+'-'+uuid.uuid4().hex[:6])
+        if directory is not None and not path.resolve().is_relative_to(data_root().resolve()):
+            raise ValueError('Session staging must stay inside Clicky Classroom data.')
         path.mkdir(parents=True)
         atomic_text(path/'session.json', json.dumps({'title': title or 'Class', 'created': datetime.now().isoformat(),
                                                     'settings': asdict(settings), 'status': 'recording'}, indent=2))
@@ -82,7 +84,8 @@ class Session:
 
     def rows(self):
         with self.db() as db:
-            return [dict(row) for row in db.execute('SELECT * FROM chunks ORDER BY start_seconds,id')]
+            order='id' if self.metadata.get('transcript_only') else 'start_seconds,id'
+            return [dict(row) for row in db.execute('SELECT * FROM chunks ORDER BY '+order)]
 
     def finish_chunk(self, id_, text='', error='', status='done'):
         with self.db() as db:
@@ -124,7 +127,7 @@ class Session:
     def export_transcript(self):
         lines = ['# '+self.metadata['title'], '', 'Timestamped local transcript. ASR can mishear names, numbers and equations.', '']
         for row in self.rows():
-            label = f"[{stamp(row['start_seconds'])}–{stamp(row['start_seconds']+row['frames']/RATE)}] {row['source']}"
+            label = (('[Time not supplied]' if row['id'] in self.metadata.get('untimed_chunk_ids',[]) else f"[{stamp(row['start_seconds'])}]" if self.metadata.get('transcript_only') else f"[{stamp(row['start_seconds'])}–{stamp(row['start_seconds']+row['frames']/RATE)}]")+' '+row['source'])
             if row['status'] == 'done' and row['text']:
                 lines.extend(['## '+label, row['text'], ''])
             elif row['status'] in {'pending', 'error'}:
@@ -139,7 +142,7 @@ class Session:
         return text
 
     def notes_input(self):
-        return '\n'.join(f"[{stamp(r['start_seconds'])}] ({r['source']}) {r['text']}" for r in self.rows()
+        return '\n'.join(('['+('Time not supplied' if r['id'] in self.metadata.get('untimed_chunk_ids',[]) else stamp(r['start_seconds']))+f"] ({r['source']}) {r['text']}") for r in self.rows()
                          if r['status'] == 'done' and r['text'])
 
     def has_errors(self):

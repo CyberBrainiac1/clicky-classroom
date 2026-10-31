@@ -8,7 +8,7 @@ from PyQt6.QtGui import QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLabel, QPushButton, QFrame, QListWidget, QStackedWidget,
     QPlainTextEdit, QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView, QScrollArea, QListWidgetItem)
+    QAbstractItemView, QScrollArea, QListWidgetItem, QComboBox)
 
 from classroom.settings import data_root
 from classroom.session import Session
@@ -172,8 +172,13 @@ class DashboardWindow(QWidget):
         self.all_notes_button = QPushButton('All class notes')
         self.all_notes_button.setObjectName('quiet')
         self.all_notes_button.setIcon(icon('folder'))
-        self.all_notes_button.clicked.connect(lambda:self.note_search.clear())
+        self.all_notes_button.clicked.connect(self.clear_note_filters)
         rail.addWidget(self.all_notes_button)
+        self.folder_filter=QComboBox()
+        self.folder_filter.setAccessibleName('Filter notes by folder')
+        self.folder_filter.addItem('All folders','')
+        self.folder_filter.currentIndexChanged.connect(lambda:self.filter_notes(self.note_search.text()))
+        rail.addWidget(self.folder_filter)
         self.note_list = QListWidget()
         self.note_list.setObjectName('noteList')
         self.note_list.setIconSize(QSize(17,17))
@@ -186,6 +191,10 @@ class DashboardWindow(QWidget):
         self.import_note_button.setIcon(icon('upload'))
         self.import_note_button.clicked.connect(self.import_note)
         rail.addWidget(self.import_note_button)
+        self.openwhispr_import_button=QPushButton('Import OpenWhispr notes')
+        self.openwhispr_import_button.setObjectName('quiet')
+        self.openwhispr_import_button.clicked.connect(self.import_openwhispr)
+        rail.addWidget(self.openwhispr_import_button)
         rail.addWidget(label('Saved on this laptop','secondary'))
         workspace.addWidget(self.note_rail)
         self.stack = QStackedWidget()
@@ -203,7 +212,7 @@ class DashboardWindow(QWidget):
         self._build_tools()
         self._build_settings()
         self.navigation.currentRowChanged.connect(self._navigate)
-        self.navigation.setCurrentRow(0)
+        self.navigation.setCurrentRow(self.PAGES.index('Classroom'))
         self.search_shortcut = QShortcut(QKeySequence('Ctrl+K'),self)
         self.search_shortcut.activated.connect(self.focus_note_search)
         self.timer = QTimer(self)
@@ -411,6 +420,7 @@ class DashboardWindow(QWidget):
     def new_note(self):
         self.select_page('Classroom')
         if self.classroom.new_draft():
+            self.clear_note_filters()
             self.note_list.clearSelection()
             self.classroom.title.setFocus()
             self.classroom.title.selectAll()
@@ -422,10 +432,21 @@ class DashboardWindow(QWidget):
             return
         self.classroom._import()
 
+    def import_openwhispr(self):
+        self.select_page('Classroom')
+        self.classroom._import_openwhispr()
+
+    def clear_note_filters(self):
+        self.note_search.clear()
+        self.folder_filter.setCurrentIndex(0)
+
     def filter_notes(self, query=''):
         query = query.casefold().strip()
         self.note_list.clear()
         for index, (session, values) in enumerate(self.library_rows):
+            folder=session.metadata.get('folder') or 'Clicky notes'
+            if self.folder_filter.currentData() and self.folder_filter.currentData()!=folder:
+                continue
             if query and query not in self.note_index.get(str(session.path),''):
                 continue
             item = QListWidgetItem(icon('file-text'),values[0])
@@ -470,6 +491,20 @@ class DashboardWindow(QWidget):
                 except (OSError, ValueError, KeyError):
                     errors += 1
         self.library_rows = rows
+        def created_key(row):
+            try:
+                return datetime.fromisoformat(row[0].metadata.get('created','').replace('Z','+00:00')).timestamp()
+            except (ValueError,OverflowError,OSError):
+                return 0
+        rows.sort(key=created_key,reverse=True)
+        selected=self.folder_filter.currentData()
+        self.folder_filter.blockSignals(True)
+        self.folder_filter.clear()
+        self.folder_filter.addItem('All folders','')
+        for folder in sorted({session.metadata.get('folder') or 'Clicky notes' for session,_ in rows}):
+            self.folder_filter.addItem(folder,folder)
+        self.folder_filter.setCurrentIndex(max(0,self.folder_filter.findData(selected)))
+        self.folder_filter.blockSignals(False)
         self.library.setRowCount(len(rows))
         for index, (_, values) in enumerate(rows):
             for column, value in enumerate(values):

@@ -30,3 +30,19 @@ def restore(context):
     user.SetForegroundWindow(context["hwnd"])
     if foreground()["hwnd"] != context["hwnd"]:
         raise OSError("Select the original app and try again; Windows did not allow focus to change")
+
+
+def prepare_target(context):
+    """For an explicit pointing/action request, reveal the app behind Clicky.
+
+    Otherwise a request typed into the dashboard sees the dashboard itself,
+    then fails the stale-screen check when Drive returns to the target app.
+    Never switch away from an unrelated foreground application.
+    """
+    current = foreground()
+    if current.get('pid') != os.getpid():
+        return False
+    if not context.get('hwnd') or not context.get('pid') or context['pid'] == os.getpid():
+        raise OSError('Select the app you want to control, then use Ctrl+Alt to ask Clicky.')
+    restore(context)
+    return True

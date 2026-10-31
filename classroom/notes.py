@@ -38,6 +38,7 @@ class LocalNotes:
     def __init__(self, settings, request=None):
         self.settings = settings
         self.request = request or self._request
+        self._managed_ollama = request is None and settings.notes_backend == 'ollama'
 
     def _request(self, text):
         import httpx
@@ -45,19 +46,40 @@ class LocalNotes:
         messages = [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': text}]
         if self.settings.notes_backend == 'ollama':
             endpoint = '/api/chat'
-            body = {'model': self.settings.notes_model, 'stream': False, 'messages': messages,
-                    'options': {'temperature': .1, 'num_ctx': 8192, 'num_predict': 1800, 'num_thread': self.settings.threads},
-                    'keep_alive': '0s'}
+            body = {'model': self.settings.notes_model, 'stream': True, 'messages': messages,
+                    'options': {'temperature': .1, 'num_ctx': 8192, 'num_predict': 1800,
+                                'num_thread': self.settings.threads, 'num_gpu': 0},
+                    'keep_alive': '2m'}
         else:
             endpoint = '/v1/chat/completions'
             body = {'model': self.settings.notes_model, 'stream': False, 'messages': messages,
                     'temperature': .1, 'max_tokens': 1800}
         # No environment proxy, redirect, cloud fallback, or authentication token.
         with httpx.Client(trust_env=False, follow_redirects=False, timeout=httpx.Timeout(180, connect=5)) as client:
-            response = client.post(base+endpoint, json=body)
-            response.raise_for_status()
-            value = response.json()
-        result = value['message']['content'] if self.settings.notes_backend == 'ollama' else value['choices'][0]['message']['content']
+            if self.settings.notes_backend == 'ollama':
+                result,completed='',False
+                with client.stream('POST',base+endpoint,json=body) as response:
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if not line.strip():
+                            continue
+                        if len(line)>128000:
+                            raise ValueError('Local notes response exceeded the frame limit')
+                        value=json.loads(line)
+                        if value.get('error'):
+                            raise ValueError('Local notes server: '+str(value['error']))
+                        result+=value.get('message',{}).get('content','')
+                        if len(result)>16000:
+                            raise ValueError('Local notes model exceeded the response limit')
+                        if value.get('done'):
+                            completed=True
+                            break
+                if not completed:
+                    raise ValueError('Local notes response was interrupted; retry to finish it.')
+            else:
+                response = client.post(base+endpoint, json=body)
+                response.raise_for_status()
+                result=response.json()['choices'][0]['message']['content']
         if not isinstance(result, str) or not result.strip():
             raise ValueError('Local notes model returned empty output')
         if len(result) > 16000:
@@ -65,6 +87,20 @@ class LocalNotes:
         return result.strip()
 
     def generate(self, session, notify=lambda message: None):
+        try:
+            return self._generate(session,notify)
+        finally:
+            if self._managed_ollama:
+                try:
+                    import httpx
+                    base=validate_local_url(self.settings.notes_url)
+                    with httpx.Client(trust_env=False,follow_redirects=False,timeout=10) as client:
+                        response=client.post(base+'/api/generate',json={'model':self.settings.notes_model,'keep_alive':0})
+                        response.raise_for_status()
+                except Exception:
+                    notify('The local notes model will unload after its short idle timeout.')
+
+    def _generate(self, session, notify):
         self.settings.validate()
         transcript = session.notes_input()
         if not transcript.strip():

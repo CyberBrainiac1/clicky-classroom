@@ -113,6 +113,22 @@ def test_recorder_pipeline_saves_before_decoding_and_notes_after_stop():
     assert Session(recorder.session.path).metadata['status'] == 'complete'
 
 
+def test_retry_releases_speech_model_before_notes_model_loads():
+    import weakref
+    refs=[]
+    class ASR:
+        def __init__(self,settings):refs.append(weakref.ref(self))
+        def transcribe(self,audio):return 'Acceleration changes velocity.'
+    class Notes:
+        def __init__(self,settings):pass
+        def generate(self,session,notify):
+            assert refs[0]() is None
+    session=Session.create('Resource lifecycle',Settings())
+    write_audio(session,pcm(1))
+    retry_session(session,transcriber_factory=ASR,notes_factory=Notes)
+    assert refs[0]() is None
+
+
 def test_asr_failure_retains_audio_and_retry_does_not_duplicate_transcript():
     session = Session.create('Class', Settings(automatic_notes=False, chunk_seconds=5))
     write_audio(session, pcm(8))
@@ -172,7 +188,7 @@ def test_local_http_notes_request_and_cloud_redirect_not_followed():
         def do_POST(self):
             captured.append((self.path, json.loads(self.rfile.read(int(self.headers['Content-Length'])))))
             if self.path == '/api/chat':
-                payload = json.dumps({'message': {'content': '## Key ideas\n[00:00:00] Newton.'}}).encode()
+                payload = json.dumps({'message': {'content': '## Key ideas\n[00:00:00] Newton.'},'done':True}).encode()
                 self.send_response(200)
                 self.send_header('Content-Type','application/json')
                 self.end_headers()

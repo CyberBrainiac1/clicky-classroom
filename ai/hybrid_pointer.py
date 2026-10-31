@@ -374,7 +374,7 @@ def find_target(
         if t is not None:
             return t
 
-    log.info("All pointer tiers failed for query: %r", query)
+    log.info("No target in enabled pointer tiers (vision skipped=%s)", skip_vision)
     return None
 
 

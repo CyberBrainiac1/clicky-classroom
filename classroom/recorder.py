@@ -150,6 +150,7 @@ class ClassroomRecorder:
                     self.writer_done.wait()
                     break
             self.session.export_transcript()
+            del transcriber  # release ASR weights before loading a notes model
             self.session.set_status('needs-review' if self.failure else 'needs-transcription' if self.session.has_errors() else 'transcribed')
             if self.settings.automatic_notes and self.session.notes_input():
                 try:
@@ -202,6 +203,7 @@ def retry_session(session, notify=lambda message: None, transcriber_factory=Loca
             session.finish_chunk(chunk['id'], error=str(exc), status='error')
             raise
     session.export_transcript()
+    del transcriber  # release ASR weights before loading a notes model
     if settings.automatic_notes and session.notes_input():
         try:
             notes_factory(settings).generate(session, notify)

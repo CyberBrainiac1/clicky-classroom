@@ -156,18 +156,18 @@ def _parse_cell_number(text: str, max_n: int) -> Optional[int]:
             obj = json.loads(m.group(0))
             for key in ("cell", "number", "n", "answer"):
                 if key in obj:
-                    n = int(obj[key])
-                    if 1 <= n <= max_n:
-                        return n
+                    value = obj[key]
+                    if type(value) is not int:
+                        return None
+                    return value if 1 <= value <= max_n else None
         except Exception:
-            pass
+            return None
 
     # Fallback: scan integers in order
     for tok in _PARSE_RE.findall(text):
         try:
             n = int(tok)
-            if 1 <= n <= max_n:
-                return n
+            return n if 1 <= n <= max_n else None
         except ValueError:
             continue
 
@@ -187,10 +187,12 @@ async def _ask_grid_pick(
         f"Cells are numbered 1 to {max_n}, left-to-right, top-to-bottom.\n\n"
         f'The user asked: "{target}"\n\n'
         f"Identify the SINGLE numbered cell that most precisely contains the "
-        f"UI element the user is asking about (button, link, menu item, icon, "
-        f"text field, etc.).\n\n"
+        f"visible target the user is asking about: a button, icon, text, a part "
+        f"of a CAD model, diagram feature, or a specific region of an object. "
+        f"A CAD part does not need to be a clickable UI control. Do not choose "
+        f"a hidden face or invent an invisible target.\n\n"
         f'Respond with ONLY this JSON, nothing else:  {{"cell": <number>}}\n\n'
-        f"If there's no specific UI element to point at (purely conceptual "
+        f"If there's no specific visible target to point at (purely conceptual "
         f'question), respond exactly:  {{"cell": 0}}'
     )
 
@@ -201,7 +203,7 @@ async def _ask_grid_pick(
             screenshots_b64=[img_b64],
             history=[],
             system_prompt=(
-                "You are a precise UI element locator. You ALWAYS answer with "
+                "You are a precise visible-target locator. You ALWAYS answer with "
                 'a single JSON object of the form {"cell": <integer>}.'
             ),
             model=model,
@@ -235,6 +237,8 @@ async def detect_element_universal(
     physical_left: int = 0,
     physical_top: int = 0,
     dpi_scale: float = 1.0,
+    logical_left: int | None = None,
+    logical_top: int | None = None,
 ) -> Optional[Detected]:
     """Locate the UI element matching `user_question` using ANY vision LLM.
 
@@ -329,7 +333,7 @@ async def detect_element_universal(
     vy = py + physical_top
 
     s = dpi_scale if dpi_scale > 0 else 1.0
-    lx = int(round(physical_left + px / s))
-    ly = int(round(physical_top + py / s))
+    lx = int(round((physical_left if logical_left is None else logical_left) + px / s))
+    ly = int(round((physical_top if logical_top is None else logical_top) + py / s))
 
     return Detected(x=lx, y=ly, screen_index=screen_index)

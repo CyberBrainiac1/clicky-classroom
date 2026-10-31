@@ -673,7 +673,7 @@ def main():
         dashboard_window[0].raise_()
         dashboard_window[0].activateWindow()
     tray.on_show_dashboard.connect(_show_dashboard)
-    if '--dashboard' in sys.argv:
+    if '--tray-only' not in sys.argv:
         _show_dashboard()
 
     # ── Global hotkey ─────────────────────────────────────────────────────────

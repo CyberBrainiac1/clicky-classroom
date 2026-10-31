@@ -22,6 +22,56 @@ def run():
     from ui.dashboard import DashboardWindow
     from ui.dashboard_icons import icon
     import sherpa_onnx
+    from classroom.openwhispr_import import transcript_rows
+    assert transcript_rows('[{"text":"Synthetic import check","timestamp":2}]')[0][0][2]==2
+    import tempfile
+    # Locator imports load configuration. Keep the check outside the real profile.
+    original_data_dir = os.environ.get('CLICKY_DATA_DIR')
+    with tempfile.TemporaryDirectory(prefix='clicky-cursor-check-') as cursor_data:
+        os.environ['CLICKY_DATA_DIR'] = cursor_data
+        try:
+            # Exercise frozen imports and real Drive code with fake input only.
+            import asyncio
+            from contextlib import contextmanager
+            from types import SimpleNamespace
+            from ai import pointing
+            from ai.element_locator import Detected
+            from drive import validate_plan, DriveController
+            import tutor
+            @contextmanager
+            def replace(obj, name, value):
+                original = getattr(obj, name)
+                setattr(obj, name, value)
+                try:
+                    yield
+                finally:
+                    setattr(obj, name, original)
+            shot = SimpleNamespace(index=1, width=100, height=100, base64_jpeg='',
+                physical_left=0, physical_top=0, physical_width=100, physical_height=100,
+                logical_left=0, logical_top=0, dpi_scale=1)
+            async def cursor_check():
+                async def miss(**kw): return None
+                async def hit(**kw): return Detected(50,50,1)
+                with replace(pointing.hybrid_pointer, 'find_target', lambda *a,**kw: None), \
+                     replace(pointing.element_locator, 'is_available', lambda *a: True), \
+                     replace(pointing.element_locator, 'detect_element', miss), \
+                     replace(pointing.universal_locator, 'detect_element_universal', hit):
+                    assert (await pointing.locate_target(shot=shot,query='synthetic target',llm=object())).x == 50
+                class FakeMouse:
+                    position = (0,0)
+                    def press(self, *args): raise AssertionError('Unexpected click')
+                    def release(self, *args): raise AssertionError('Unexpected release')
+                mouse = FakeMouse()
+                plan = validate_plan({'title':'Synthetic hover','actions':[{'kind':'move','x':500,'y':500}]})
+                with replace(tutor, 'active_window_title', lambda:'Synthetic test'):
+                    await DriveController().run(plan,shot,mouse=mouse,keyboard=object())
+                assert mouse.position == (50,50)
+            asyncio.run(cursor_check())
+        finally:
+            if original_data_dir is None:
+                os.environ.pop('CLICKY_DATA_DIR', None)
+            else:
+                os.environ['CLICKY_DATA_DIR'] = original_data_dir
 
     edge_version = version('edge-tts')
     assert tuple(map(int, edge_version.split('.')[:2])) >= (7, 3), 'Edge speech needs the updated handshake'
@@ -53,7 +103,8 @@ def run():
     app.processEvents()
     report = {"ok": True, "qt_binding": QT_VERSION_STR, "qt_runtime": qVersion(),
               "checks": ["QtWidgets import", "native window", "Sketch rendering", "audio capture import", "Edge voice import",
-                         "six dashboard pages", "Classroom without capture", "bundled SVG icons", "sherpa-onnx import"],
+                         "six dashboard pages", "Classroom without capture", "bundled SVG icons", "sherpa-onnx import", "OpenWhispr importer",
+                         "same-request pointer fallback", "move-only Drive with fake input"],
               "edge_tts": edge_version,
               "services_started": False}
     if '--smoke-audio' in sys.argv:

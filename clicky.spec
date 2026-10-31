@@ -23,6 +23,7 @@ hidden = [
     "classroom.ui", "classroom.settings", "classroom.session", "classroom.recorder",
     "classroom.engines", "classroom.notes", "classroom.capture", "classroom.openwhispr_audio",
     "classroom.models", "audio.stt.parakeet_stt",
+    "classroom.openwhispr_import",
     # Lazy LLM providers
     "ai.claude_provider",
     "ai.openai_provider",
@@ -31,6 +32,7 @@ hidden = [
     "ai.ollama_models_registry",
     "ai.github_copilot_provider",
     "ai.element_locator",
+    "ai.pointing",
     "ai.universal_locator",
     "ai.web_search",
     "ai.ollama_bootstrap",

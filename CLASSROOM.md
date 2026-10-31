@@ -1,5 +1,13 @@
 # Clicky Classroom
 
+## Existing OpenWhispr notes
+
+Use **Import OpenWhispr notes** in the Notes sidebar or the More menu. Clicky reads the local OpenWhispr SQLite database without changing it, including recent saved WAL data. It copies active notes, personal text, saved summaries, transcripts, existing speaker labels, folders and dates. Deleted notes and unavailable team notes are excluded. Original selected fields are retained in each imported class folder for recovery. Audio, login tokens, API keys and sharing tokens are not copied.
+
+Importing twice does not create duplicate notes or overwrite Clicky edits. If an already-imported source note changes, Clicky reports that it kept the existing copy; this is a copy/import feature, not background synchronization. Unknown transcript formats are retained as text, and missing times are labeled unavailable. Imported notes without copied audio cannot be re-transcribed, but their saved transcript can be used for local study-note generation.
+
+Normal Clicky startup now opens the dashboard on Notes. `--tray-only` retains background-only startup. Existing assistant shortcuts and tools remain available. Local Ollama notes stream their response, use a limited CPU budget, and unload the model after generation. Speech-model memory is released before the notes model loads. Generated equations, facts and timestamps still require review.
+
 A native window for recording a teacher, transcribing the class locally, and writing study notes with a local language model. Classroom is separate from Clicky's existing screen/Q&A Lesson Recording.
 
 The full app also adds a native **Dashboard** with Home, Chat, Notes, Library, Tools and Settings. The Notes workspace follows the user-selected OpenWhispr layout: saved notes on the left, searchable transcripts, a large title, transcript/notes tabs and compact recording controls. It uses dark neutral colors, Clicky's blue accent, Segoe UI and consistent spacing. Existing assistant, cursor guidance, shortcuts, Sketch, Work/routines, connections, journal and recording controls remain available. Run `run-dashboard.cmd` after preparing full dependencies, or choose **Open Dashboard** from the fork's tray. The launcher can read the installed Clicky's legacy .env without copying keys into the repository. Existing protected settings keep precedence.

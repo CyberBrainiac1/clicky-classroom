@@ -71,7 +71,7 @@ def app_key(title: str, hwnd=None) -> str:
 LOCATE_RE = re.compile(
     r"\b(where\s+(is|do|can|should)|how\s+do\s+i\s+(click|find|open|access|use|get\s+to)|"
     r"point\s+(at|to)|show\s+me\s+(the|where)|click\s+(the|on)|find\s+the|"
-    r"locate\s+the|highlight\s+the)\b",
+    r"locate\s+the|highlight\s+the|hover\s+(?:over|on)|move\s+(?:the\s+)?(?:mouse|cursor|pointer)\s+(?:to|over))\b",
     re.IGNORECASE,
 )
 

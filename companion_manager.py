@@ -183,20 +183,6 @@ def _split_steps(text: str) -> list[str]:
     return steps
 
 
-def _computer_use_available() -> bool:
-    """Computer Use needs an Anthropic key AND the API to be accepting it.
-
-    If Anthropic has been rejecting the request (retired model, unsupported tool
-    version) this is False for a while and pointing falls through to the
-    universal grid locator, which works with whichever LLM is active.
-    """
-    try:
-        from ai.element_locator import is_available
-        return is_available()
-    except Exception:
-        return bool(cfg.anthropic_api_key)
-
-
 def _speakable(text: str) -> str:
     """Make LLM text safe for TTS: models emit LaTeX ("\\( a \\)",
     "\\[ a^2 + b^2 = c^2 \\]") and markdown that edge-tts reads aloud
@@ -1029,6 +1015,13 @@ class CompanionManager(QObject):
             # person in images"). Stripping the screenshot lets the LLM answer
             # from training data + web search instead, which is what the user
             # actually wants when they ask "who is MrBeast" while on YouTube.
+            # Typed dashboard requests must see the target app, not Clicky's own
+            # window. Keep privacy and the later approval/freshness checks intact.
+            from drive import is_action_request
+            if is_locate(transcript) or re.search(r"\b(click|type|drag|scroll|press|move|hover|take over)\b", transcript, re.I):
+                from desktop import prepare_target
+                if await asyncio.to_thread(prepare_target, self._drive_context):
+                    await asyncio.sleep(0.2)
             sensitive = self._privacy_guard and is_sensitive_window(title)
             identity_q = is_identity_question(transcript)
             if sensitive or identity_q:
@@ -1077,71 +1070,13 @@ class CompanionManager(QObject):
                 search_task = asyncio.create_task(search(transcript))
 
             if screenshots and locate_triggered:
-                shot = screenshots[0]
-                # Pointing accuracy upgrade: try the hybrid pointer first.
-                # Tier 1 (UIA tree) is ~5ms and pixel-perfect; tier 2 (OCR)
-                # handles canvas apps. Falls through to the vision LLM grid
-                # below only when both whiff.
-                try:
-                    from ai.hybrid_pointer import find_target as _hybrid_find
-                    target = await asyncio.to_thread(_hybrid_find,
-                        transcript,
-                        screenshot=shot,
-                        skip_vision=True,
-                        window_handle=self._drive_context.get('hwnd'),
-                    )
-                except Exception:
-                    target = None
-
-                if target is not None and target.source in ("uia", "ocr"):
-                    # UIA / OCR coordinates are PHYSICAL pixels; the overlay
-                    # draws in LOGICAL pixels — divide by the DPI scale.
-                    # (Also: return an object with .x/.y — downstream code
-                    # accesses attributes, a bare tuple would crash it.)
-                    from types import SimpleNamespace
-                    _scale = shot.dpi_scale or 1.0
-                    _pt = SimpleNamespace(x=shot.logical_left + (target.x - shot.physical_left) / _scale,
-                                          y=shot.logical_top + (target.y - shot.physical_top) / _scale)
-                    async def _ready(pt=_pt):
-                        return pt
-                    locate_task = asyncio.create_task(_ready())
-                elif _computer_use_available():
-                    # Path A — Anthropic Computer Use (best accuracy)
-                    from ai.element_locator import detect_element
-                    locate_task = asyncio.create_task(detect_element(
-                        screenshot_jpeg_b64=shot.base64_jpeg,
-                        original_width=shot.width,
-                        original_height=shot.height,
-                        physical_width=shot.physical_width,
-                        physical_height=shot.physical_height,
-                        physical_left=shot.physical_left,
-                        physical_top=shot.physical_top,
-                        dpi_scale=shot.dpi_scale,
-                        screen_index=shot.index,
-                        user_question=transcript,
-                    ))
-                else:
-                    # Path B — Universal grid locator (any vision LLM)
-                    try:
-                        from ai.universal_locator import detect_element_universal
-                        llm = self._get_llm()
-                        locate_task = asyncio.create_task(detect_element_universal(
-                            llm=llm,
-                            screenshot_jpeg_b64=shot.base64_jpeg,
-                            original_width=shot.width,
-                            original_height=shot.height,
-                            physical_width=shot.physical_width,
-                            physical_height=shot.physical_height,
-                            physical_left=shot.physical_left,
-                            physical_top=shot.physical_top,
-                            dpi_scale=shot.dpi_scale,
-                            screen_index=shot.index,
-                            user_question=transcript,
-                            model=self._current_model,
-                        ))
-                    except Exception:
-                        # Universal locator should never crash the main flow
-                        locate_task = None
+                from ai.pointing import locate_target
+                locate_task = asyncio.create_task(locate_target(
+                    shot=screenshots[0], query=transcript, llm=self._get_llm(),
+                    model=self._current_model,
+                    claude_model=self._current_model if cfg.llm_provider() == "claude" else None,
+                    window_handle=self._drive_context.get("hwnd"),
+                ))
 
             search_results = ""
             if search_task:
@@ -1336,7 +1271,7 @@ class CompanionManager(QObject):
             if proposed_drive:
                 if not screenshots or sensitive:
                     raise ValueError("Drive needs a current, non-sensitive screenshot")
-                if not re.search(r"\b(click|type|open|do|perform|drive|fill|drag|scroll|press|take over)\b|करो|खोलो", transcript, re.I):
+                if not is_action_request(transcript):
                     raise ValueError("Drive requires a direct request to perform an action")
                 self._pending_drive = (proposed_drive, screenshots[0], time.monotonic())
 

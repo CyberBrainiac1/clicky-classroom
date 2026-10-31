@@ -1,5 +1,9 @@
 # Clicky dashboard and class notes — development summary
 
+New import update: Clicky can copy existing local OpenWhispr notes into its Notes library. It keeps personal notes, saved summaries, transcripts, folders, dates and original source fields. The source database is opened read-only; deleted/unavailable notes, audio, credentials and sharing tokens are excluded. Importing again keeps existing Clicky edits and does not duplicate notes. This is an import, not automatic two-way synchronization.
+
+Normal startup opens Notes, while `--tray-only` keeps background startup available. The suite now passes **118 tests**, including importing a live WAL database, preserving every same-time segment, protecting user edits, streaming errors and memory release before note generation. A real small local-model test completed in about 27 seconds and unloaded afterward. It is a draft generator: the test showed that timestamps and extra numerical facts still need checking. Imported saved summaries are copied exactly rather than regenerated.
+
 October 31 update: the Notes screen now follows the OpenWhispr screenshot you chose. A slim navigation bar and saved-note list sit beside a large transcript and notebook. Search finds words in titles, transcripts and saved notes. Device/model options are in Recording settings; import, recovery and generation are in More. You can write a text-only note without recording. Unsaved edits are protected when changing notes and saved before a normal close or quit. The full automated suite passed **103 tests**; previews used made-up physics lesson text, not your meeting.
 
 Two other speech models were tested on the same 2,142-word recording. Parakeet V3 made 0.84% word errors, Unified English 1.07%, and Orukeet 1.96%. All finished all 25 sections. They have almost the same file size, but neither improved this test, so Parakeet V3 stays the default. A clean synthetic lecture cannot tell us which model wins in every real classroom. BENCHMARK.md has sources and details.
@@ -21,3 +25,13 @@ A real transcription test processed2,142words of clean prerecorded speech,12minu
 Automated tests cover the original Clicky features, the new UI/action routing, no-recording-on-open behavior, local-only notes requests, audio recovery and failure paths. Tests render offscreen and do not touch live audio devices. See BENCHMARK.md and CLASSROOM.md for validation details and remaining tests.
 
 This work is in a separate fork/branch. The installed Clicky and OpenWhispr apps were not replaced or restarted during this development. No new live recording was started. The full portable executable passed its packaged check: all six dashboard pages, local icons, Sketch and speech dependencies. The actual executable also transcribed the entire 2,142-word audio, completing 25/25 sections with 0.84% word errors on one CPU thread. It did not open live capture or start normal assistant services during the test. Live microphone/loopback hardware and real local notes-model quality still need post-meeting validation. The portable app can run without replacing the installed app; an installer is not required.
+
+
+## Real mouse controls — October 31
+
+The blue guide and the real Windows mouse are separate. Added a move-only Drive action, accepted move/hover requests, fixed same-request locator fallback and matched Claude tools to selected models. Visible CAD parts can be targets. Requests typed into the dashboard reveal the saved target app first. Approval, Escape stop and existing privacy/freshness checks remain. 148 tests and the packaged application check passed using fake inputs. Claude generated valid move and click plans on an authored test image, without executing them. Installed update and preserved configuration/notes; user still needs to test real interaction in their app. Voice delay was explained, not optimized. These updates are preserved on the classroom-local-notes branch.
+
+
+## GitHub retention and local removal
+
+The user requested uninstalling Clicky from their laptop and keeping the project on GitHub. Preserve the latest source on the classroom-local-notes branch before removing the local checkout, installed application and packaged copies. Keep personal saved notes and recordings out of GitHub.
